@@ -39,6 +39,14 @@ const App: React.FC = () => {
     const [currentCall, setCurrentCall] = useState<Call | null>(null);
     const [activeChatMessages, setActiveChatMessages] = useState<Message[]>([]);
     
+    // Refs for accessing state inside callbacks without triggering re-renders
+    const usersRef = useRef<User[]>([]);
+
+    // Sync usersRef with users state
+    useEffect(() => {
+        usersRef.current = users;
+    }, [users]);
+
     // Modal states
     const [isAddContactOpen, setAddContactOpen] = useState(false);
     const [isSettingsOpen, setSettingsOpen] = useState(false);
@@ -98,7 +106,8 @@ const App: React.FC = () => {
         const unsubSignals = AppService.subscribeToSignals(currentUser.id, (signal) => {
             console.log("App.tsx received signal:", signal.type);
             if (signal.type === 'offer') {
-                const caller = users.find(u => u.id === signal.senderId);
+                // Use Ref to get the latest users list without adding 'users' to dependency array
+                const caller = usersRef.current.find(u => u.id === signal.senderId);
                 if (caller) {
                     // Temporarily store signal ID to delete it after response
                     const signalId = signal.id;
@@ -129,7 +138,7 @@ const App: React.FC = () => {
             unsubChats();
             unsubSignals();
         };
-    }, [currentUser?.uid, users]); // Depend on users to find caller info
+    }, [currentUser?.uid]); // REMOVED 'users' to prevent infinite loop
 
     // --- Active Chat Messages Subscription ---
     useEffect(() => {
