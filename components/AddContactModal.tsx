@@ -1,10 +1,9 @@
-
 import React, { useState, useRef } from 'react';
 // Fix: Corrected import path for types.
 import type { User, UserInvitePayload } from '../types';
 // Fix: Corrected import path for Icons.
 import { XIcon } from './Icons';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 interface AddContactModalProps {
   currentUser: User;
@@ -49,7 +48,7 @@ export const AddContactModal: React.FC<AddContactModalProps> = ({ currentUser, o
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useOnClickOutside(modalRef, onClose);
+  useClickOutside(modalRef, onClose);
 
   const userPayload: UserInvitePayload = {
     id: currentUser.id,
@@ -184,4 +183,3 @@ export const AddContactModal: React.FC<AddContactModalProps> = ({ currentUser, o
     </div>
   );
 };
-
