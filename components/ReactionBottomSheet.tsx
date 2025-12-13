@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 interface ReactionBottomSheetProps {
   isOpen: boolean;
@@ -9,7 +9,7 @@ interface ReactionBottomSheetProps {
 
 export const ReactionBottomSheet: React.FC<ReactionBottomSheetProps> = ({ isOpen, onClose, onDelete }) => {
   const sheetRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(sheetRef, onClose);
+  useClickOutside(sheetRef, onClose);
 
   if (!isOpen) return null;
 
