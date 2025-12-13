@@ -3,7 +3,7 @@ import React, { useMemo, useState, useRef } from 'react';
 import type { User, Chat } from '../types';
 // Fix: Corrected import path for Icons.
 import { SettingsIcon, UserPlusIcon, FolderIcon, SearchIcon, MoreVertIcon } from './Icons';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 interface SidebarProps {
   currentUser: User;
@@ -75,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [isMenuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    useOnClickOutside(menuRef, () => setMenuOpen(false));
+    useClickOutside(menuRef, () => setMenuOpen(false));
 
     const chatWithContactDetails = useMemo(() => {
         return chats.map(chat => {
