@@ -96,6 +96,7 @@ const App: React.FC = () => {
         // We only listen for 'offer' here to start the call. 
         // 'answer' and 'candidate' are handled within CallScreen.tsx
         const unsubSignals = AppService.subscribeToSignals(currentUser.id, (signal) => {
+            console.log("App.tsx received signal:", signal.type);
             if (signal.type === 'offer') {
                 const caller = users.find(u => u.id === signal.senderId);
                 if (caller) {
@@ -116,6 +117,8 @@ const App: React.FC = () => {
                         // User rejected
                         if (signalId) AppService.deleteSignal(signalId);
                     }
+                } else {
+                    console.warn("Received offer from unknown user ID:", signal.senderId);
                 }
             }
         });
