@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { PaperclipIcon, EmojiIcon, MicIcon, SendIcon, PhotoIcon, DocumentTextIcon, XIcon, PlayIcon } from './Icons';
 import { MediaPicker } from './MediaPicker';
 import { LinkPreviewCard } from './LinkPreviewCard';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 import type { LinkPreview, Message } from '../types';
 
 interface MessageInputProps {
@@ -145,8 +144,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 
-  useOnClickOutside(mediaPickerRef, () => setShowMediaPicker(false));
-  useOnClickOutside(attachmentMenuRef, () => setShowAttachmentMenu(false));
+  useClickOutside(mediaPickerRef, () => setShowMediaPicker(false));
+  useClickOutside(attachmentMenuRef, () => setShowAttachmentMenu(false));
   
   // Auto-resize textarea
   useLayoutEffect(() => {
