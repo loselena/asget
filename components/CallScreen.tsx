@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import type { Call, User } from '../types';
 import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon } from './Icons';
@@ -27,6 +28,11 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   
+  // Flag to track if we are ready to accept ICE candidates
+  const isRemoteDescriptionSet = useRef(false);
+  // Queue for candidates arriving before remote description is set
+  const candidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  
   const processedCandidates = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -37,8 +43,13 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             setStatusText('Доступ к устройствам...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: call.type === 'video'
+                video: true // Always request video initially to avoid renegotiation, toggle tracks later
             });
+            
+            // Apply initial preference
+            if (call.type === 'voice') {
+                stream.getVideoTracks().forEach(t => t.enabled = false);
+            }
             
             if (!isMounted) {
                 stream.getTracks().forEach(track => track.stop());
@@ -61,7 +72,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             if (METERED_API_KEY && METERED_DOMAIN) {
                 try {
                     const controller = new AbortController();
-                    // Если за 2 секунды не получили ответ, используем Google STUN, чтобы не блокировать звонок
                     const timeoutId = setTimeout(() => controller.abort(), 2000);
 
                     const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`, {
@@ -82,7 +92,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 }
             }
 
-            // Создаем PeerConnection с полученными (или стандартными) серверами
+            // Создаем PeerConnection
             setStatusText('Установка соединения...');
             const pc = new RTCPeerConnection({ iceServers });
             peerConnectionRef.current = pc;
@@ -128,6 +138,15 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 if (call.isIncoming && call.offerPayload) {
                     setStatusText('Ответ на звонок...');
                     await pc.setRemoteDescription(new RTCSessionDescription(call.offerPayload));
+                    
+                    // Mark ready for candidates
+                    isRemoteDescriptionSet.current = true;
+                    // Flush queue
+                    for (const candidate of candidateQueue.current) {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    }
+                    candidateQueue.current = [];
+
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     
@@ -162,7 +181,14 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         } catch (err) {
             console.error("Error initializing call:", err);
-            setStatusText('Ошибка: проверьте камеру/микрофон');
+            // Handle specific getUserMedia errors
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
+                 setStatusText('Ошибка: Доступ к камере запрещен');
+            } else if (err instanceof DOMException && err.name === 'NotFoundError') {
+                 setStatusText('Ошибка: Камера или микрофон не найдены');
+            } else {
+                 setStatusText('Ошибка инициализации звонка');
+            }
         }
     };
 
@@ -192,13 +218,28 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 const desc = new RTCSessionDescription(signal.payload);
                 if (pc.signalingState !== 'stable') {
                     await pc.setRemoteDescription(desc);
+                    // Mark ready for candidates
+                    isRemoteDescriptionSet.current = true;
+                    // Flush queue
+                    for (const candidate of candidateQueue.current) {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    }
+                    candidateQueue.current = [];
                 }
             } else if (signal.type === 'candidate') {
-                const candidate = new RTCIceCandidate(signal.payload);
-                const candidateStr = JSON.stringify(signal.payload);
+                const candidateInit = signal.payload;
+                const candidateStr = JSON.stringify(candidateInit);
+                
                 if (!processedCandidates.current.has(candidateStr)) {
-                     await pc.addIceCandidate(candidate);
                      processedCandidates.current.add(candidateStr);
+                     
+                     if (isRemoteDescriptionSet.current) {
+                         await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+                     } else {
+                         // Queue candidate until remote description is set
+                         console.log("Queuing ICE candidate...");
+                         candidateQueue.current.push(candidateInit);
+                     }
                 }
             }
             if (signal.id) {
@@ -230,7 +271,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   };
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden animate-fadeIn">
         {/* Remote Video */}
         <div className="absolute inset-0 z-0">
              {remoteStream ? (
