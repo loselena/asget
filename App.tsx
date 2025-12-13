@@ -12,6 +12,7 @@ import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { ForwardMessageModal } from './components/ForwardMessageModal';
 import { VideoPreviewModal } from './components/VideoPreviewModal';
+import { IncomingCallModal } from './components/IncomingCallModal';
 import { LinkPreviewService } from './services/linkPreviewService';
 import type { User, Chat, Message, Call, UserInvitePayload, LinkPreview, SignalPayload } from './types';
 import { AppService, stringToId } from './services/AppService';
@@ -49,6 +50,9 @@ const App: React.FC = () => {
     const [currentCall, setCurrentCall] = useState<Call | null>(null);
     const [activeChatMessages, setActiveChatMessages] = useState<Message[]>([]);
     
+    // Incoming call state
+    const [incomingCallSignal, setIncomingCallSignal] = useState<{ signal: SignalPayload, caller: User } | null>(null);
+    
     // Refs for accessing state inside callbacks without triggering re-renders
     const usersRef = useRef<User[]>([]);
 
@@ -80,10 +84,36 @@ const App: React.FC = () => {
             if (sessionUserJson) {
                 const user = JSON.parse(sessionUserJson) as User;
                 setCurrentUser(user);
+                
                 const storedUsers = localStorage.getItem('users');
                 setUsers(storedUsers ? JSON.parse(storedUsers) : []);
-                const storedChats = localStorage.getItem(`chats-${user.id}`);
-                setChats(storedChats ? JSON.parse(storedChats) : []);
+                
+                // Sanitize Chats: Remove expired blob URLs to prevent console errors
+                const storedChatsStr = localStorage.getItem(`chats-${user.id}`);
+                if (storedChatsStr) {
+                    let loadedChats: Chat[] = JSON.parse(storedChatsStr);
+                    let hasChanges = false;
+                    
+                    loadedChats = loadedChats.map(chat => ({
+                        ...chat,
+                        messages: chat.messages.map(msg => {
+                            // Blob URLs are session-specific. If we reloaded, they are dead.
+                            if (msg.content && typeof msg.content === 'string' && msg.content.startsWith('blob:')) {
+                                hasChanges = true;
+                                return { ...msg, type: 'text', content: '[Изображение недоступно: сессия истекла]', caption: undefined };
+                            }
+                            return msg;
+                        })
+                    }));
+                    
+                    if (hasChanges) {
+                        localStorage.setItem(`chats-${user.id}`, JSON.stringify(loadedChats));
+                        console.log("Sanitized expired blob URLs from storage.");
+                    }
+                    setChats(loadedChats);
+                } else {
+                    setChats([]);
+                }
             }
         }
         
@@ -111,34 +141,26 @@ const App: React.FC = () => {
         });
         
         // 4. Subscribe to Incoming Call Signals (OFFER only)
-        // We only listen for 'offer' here to start the call. 
-        // 'answer' and 'candidate' are handled within CallScreen.tsx
         const unsubSignals = AppService.subscribeToSignals(currentUser.id, (signal) => {
             console.log("App.tsx received signal:", signal.type);
+            
             if (signal.type === 'offer') {
-                // Use Ref to get the latest users list without adding 'users' to dependency array
+                // Use Ref to get the latest users list
                 const caller = usersRef.current.find(u => u.id === signal.senderId);
                 if (caller) {
-                    // Temporarily store signal ID to delete it after response
-                    const signalId = signal.id;
-                    const confirmCall = window.confirm(`Входящий звонок от ${caller.name}. Принять?`);
-                    if (confirmCall) {
-                        setCurrentCall({ 
-                            user: caller, 
-                            type: 'video', 
-                            isIncoming: true, 
-                            roomId: signal.payload.roomId,
-                            offerPayload: signal.payload.offer // Pass the WebRTC offer
-                        });
-                        // We delete the offer signal now that we've accepted it locally
-                        if (signalId) AppService.deleteSignal(signalId);
-                    } else {
-                        // User rejected
-                        if (signalId) AppService.deleteSignal(signalId);
+                    // Check if we are already in a call
+                    if (currentCall) {
+                         // Busy: reject immediately (optional implementation)
+                         return; 
                     }
+                    // Show custom modal instead of window.confirm
+                    setIncomingCallSignal({ signal, caller });
                 } else {
                     console.warn("Received offer from unknown user ID:", signal.senderId);
                 }
+            } else if (signal.type === 'answer' || signal.type === 'candidate') {
+                 // These are handled inside CallScreen if active, 
+                 // BUT if CallScreen is NOT active (e.g. race condition), we should probably ignore or log.
             }
         });
 
@@ -148,7 +170,7 @@ const App: React.FC = () => {
             unsubChats();
             unsubSignals();
         };
-    }, [currentUser?.uid]); // REMOVED 'users' to prevent infinite loop
+    }, [currentUser?.uid, currentCall]); // Added currentCall to deps to prevent receiving calls while in call
 
     // --- Active Chat Messages Subscription ---
     useEffect(() => {
@@ -333,9 +355,6 @@ const App: React.FC = () => {
         } else {
             // Local Storage fallback (Mock Mode)
             // We need to handle files specially here to make them persistent.
-            // Blob URLs (created by URL.createObjectURL) expire when the session ends or page reloads.
-            // We convert files to Base64 to store them in localStorage.
-            
             const newMessagesRaw: Message[] = [];
 
             for (const [index, msg] of messages.entries()) {
@@ -347,7 +366,6 @@ const App: React.FC = () => {
                         content = await convertFileToBase64(msg.file);
                     } catch (e) {
                         console.error("Failed to convert file to Base64", e);
-                        // Fallback to existing content (likely blob url), though it won't persist well
                     }
                 }
 
@@ -421,9 +439,6 @@ const App: React.FC = () => {
         if (!currentUser) return;
         
         if (isSupabaseInitialized) {
-            // We pass currentUser.name because in this flow we generate ID from name, 
-            // but updating name might change ID logic if we weren't careful. 
-            // In the AppService update, we rely on UID, so it's fine.
             const updatedUser = await AppService.createOrUpdateUser(currentUser.uid, updates.name || currentUser.name);
             setCurrentUser({ ...currentUser, ...updates }); 
             setSettingsOpen(false);
@@ -443,9 +458,31 @@ const App: React.FC = () => {
         if (contactUser && currentUser) {
             const call: Call = { user: contactUser, type, roomId: `${currentUser.id}-${Date.now()}` };
             setCurrentCall(call);
-            // NOTE: We don't send the signal here anymore. 
-            // CallScreen will handle the WebRTC Offer generation and sending.
         }
+    };
+
+    // Call Acceptance Handlers
+    const handleAcceptCall = () => {
+        if (!incomingCallSignal || !currentUser) return;
+        const { signal, caller } = incomingCallSignal;
+        
+        setCurrentCall({ 
+            user: caller, 
+            type: 'video', // Defaulting to video, can be adjusted if signal carries type
+            isIncoming: true, 
+            roomId: signal.payload.roomId,
+            offerPayload: signal.payload.offer
+        });
+        
+        if (signal.id) AppService.deleteSignal(signal.id);
+        setIncomingCallSignal(null);
+    };
+
+    const handleDeclineCall = () => {
+        if (!incomingCallSignal) return;
+        const { signal } = incomingCallSignal;
+        if (signal.id) AppService.deleteSignal(signal.id);
+        setIncomingCallSignal(null);
     };
     
     const handleDeleteMessages = async (messageIds: number[]) => {
@@ -457,7 +494,6 @@ const App: React.FC = () => {
                 const messagesToDelete = activeChatMessages.filter(m => messageIds.includes(m.id));
                 for (const msg of messagesToDelete) {
                     if ((msg as any)._docId) {
-                         // _docId holds the DB ID
                         await AppService.deleteMessage(chat.uid, (msg as any)._docId);
                     }
                 }
@@ -610,10 +646,23 @@ const App: React.FC = () => {
                 )}
             </main>
             
+            {/* Modals */}
             {isAddContactOpen && <AddContactModal currentUser={currentUser} onClose={() => setAddContactOpen(false)} onAddContact={handleAddContact} />}
             {isSettingsOpen && <SettingsModal currentUser={currentUser} onClose={() => setSettingsOpen(false)} onSave={handleSaveSettings} />}
             {isFileManagerOpen && <FileManagerModal chats={chats} onClose={() => setFileManagerOpen(false)} onViewImage={setImagePreviewUrl} onDeleteMessages={handleDeleteMessages} showConfirm={showConfirm} />}
+            
+            {/* Call Screen */}
             {currentCall && <CallScreen currentUser={currentUser!} call={currentCall} onEndCall={() => setCurrentCall(null)} />}
+            
+            {/* Incoming Call Notification */}
+            {incomingCallSignal && (
+                <IncomingCallModal 
+                    caller={incomingCallSignal.caller} 
+                    onAccept={handleAcceptCall} 
+                    onDecline={handleDeclineCall} 
+                />
+            )}
+
             {imagePreviewUrl && <ImagePreviewModal imageUrl={imagePreviewUrl} onClose={() => setImagePreviewUrl(null)} />}
             {videoPreviewUrl && <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />}
              {forwardingState.isOpen && forwardingState.message && (
