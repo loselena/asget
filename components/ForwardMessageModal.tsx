@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 import type { Message, User } from '../types';
 import { XIcon, SendIcon, CircleCheckIcon } from './Icons';
 import { MessageBubble } from './MessageBubble';
@@ -51,7 +51,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   const [comment, setComment] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  useOnClickOutside(modalRef, onClose);
+  useClickOutside(modalRef, onClose);
 
   const handleToggleSelection = (id: number) => {
     setSelectedContactIds(prev => {
