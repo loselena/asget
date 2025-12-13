@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import type { Message, User, LinkPreview } from '../types';
-import { DoubleCheckIcon, SingleCheckIcon, DocumentTextIcon, PlayIcon, PauseIcon, XIcon, EmojiIcon, ShareIcon, PlusIcon } from './Icons';
+import { DoubleCheckIcon, SingleCheckIcon, DocumentTextIcon, PlayIcon, PauseIcon, XIcon, EmojiIcon, ShareIcon, PlusIcon, PhotoIcon } from './Icons';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { ReactionPicker } from './ReactionPicker';
@@ -186,6 +187,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
   const [isBottomSheetOpen, setBottomSheetOpen] = useState(false);
   const [selectedEmojiForDelete, setSelectedEmojiForDelete] = useState<string | null>(null);
   const [contextMenuShowsHeader, setContextMenuShowsHeader] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const reactionPickerRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -258,9 +260,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
     const contentBody = (() => {
         switch (type) {
         case 'image':
+            if (imgError) {
+                return (
+                    <div className="flex flex-col items-center justify-center bg-gray-700/50 rounded-md h-32 w-48 p-4 text-center">
+                        <PhotoIcon className="text-3xl text-gray-500 mb-2"/>
+                        <p className="text-xs text-gray-400">Изображение недоступно</p>
+                    </div>
+                );
+            }
             return (
             <div className="relative cursor-pointer" onClick={() => onViewImage(content)}>
-                <img src={content} alt={caption || 'image'} className="rounded-md w-full max-w-xs lg:max-w-sm" />
+                <img 
+                    src={content} 
+                    alt={caption || 'image'} 
+                    className="rounded-md w-full max-w-xs lg:max-w-sm" 
+                    onError={() => setImgError(true)}
+                />
                 {caption && <p className="mt-1 text-sm break-words">{caption}</p>}
             </div>
             );
@@ -321,9 +336,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
         case 'audio':
                 return <AudioPlayer src={content} />;
         case 'gif':
-                return <img src={content} alt="gif" className="rounded-md max-w-[200px]" />;
+                return <img src={content} alt="gif" className="rounded-md max-w-[200px]" onError={(e) => (e.currentTarget.style.display = 'none')} />;
         case 'sticker':
-                return <img src={content} alt="sticker" className="w-32 h-32 object-contain" />;
+                return <img src={content} alt="sticker" className="w-32 h-32 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />;
         case 'text':
         default:
             const embedUrl = linkPreview ? getEmbedUrl(linkPreview) : null;
@@ -412,6 +427,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
       bubbleSizeClass = `w-[250px] max-w-full`;
   } else if (type === 'gif' || type === 'sticker') {
       bubbleSizeClass = 'w-fit';
+  } else if (type === 'image' && imgError) {
+      bubbleSizeClass = 'w-fit'; // Shrink bubble if image failed
   } else {
       bubbleSizeClass = `${responsiveMaxWidths} md:max-w-md lg:max-w-xl min-w-24`;
   }
