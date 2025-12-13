@@ -4,7 +4,7 @@ import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-rea
 import type { Message, User, LinkPreview } from '../types';
 import { DoubleCheckIcon, SingleCheckIcon, DocumentTextIcon, PlayIcon, PauseIcon, XIcon, EmojiIcon, ShareIcon, PlusIcon } from './Icons';
 import { LinkPreviewCard } from './LinkPreviewCard';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { ReactionPicker } from './ReactionPicker';
 import { ReactionBottomSheet } from './ReactionBottomSheet';
 import { MessageActionHeader } from './MessageActionHeader';
@@ -205,7 +205,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
     };
   }, []);
 
-  useOnClickOutside(reactionPickerRef, () => setShowReactionPicker(false));
+  useClickOutside(reactionPickerRef, () => setShowReactionPicker(false));
 
   const formatTime = (ts: string) => {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
