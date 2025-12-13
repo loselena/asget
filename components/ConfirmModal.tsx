@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { XIcon } from './Icons';
 
 interface ConfirmModalProps {
@@ -22,7 +22,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   cancelText = 'Отмена',
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(modalRef, onClose);
+  useClickOutside(modalRef, onClose);
 
   if (!isOpen) return null;
 
