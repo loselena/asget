@@ -30,6 +30,16 @@ interface ForwardingState {
     message: Message | null;
 }
 
+// Helper to convert File to Base64 string for local storage persistence
+const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
+
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -322,16 +332,36 @@ const App: React.FC = () => {
             }
         } else {
             // Local Storage fallback (Mock Mode)
-            const newMessagesRaw: Message[] = messages.map((msg, index) => ({
-                id: Date.now() + index,
-                content: msg.content,
-                type: msg.type,
-                caption: msg.caption,
-                linkPreview: msg.linkPreview,
-                timestamp: new Date().toISOString(),
-                senderId: currentUser!.id,
-                status: 'sent' as const,
-            }));
+            // We need to handle files specially here to make them persistent.
+            // Blob URLs (created by URL.createObjectURL) expire when the session ends or page reloads.
+            // We convert files to Base64 to store them in localStorage.
+            
+            const newMessagesRaw: Message[] = [];
+
+            for (const [index, msg] of messages.entries()) {
+                let content = msg.content;
+                
+                // If there's a file, convert it to Base64
+                if (msg.file) {
+                    try {
+                        content = await convertFileToBase64(msg.file);
+                    } catch (e) {
+                        console.error("Failed to convert file to Base64", e);
+                        // Fallback to existing content (likely blob url), though it won't persist well
+                    }
+                }
+
+                newMessagesRaw.push({
+                    id: Date.now() + index,
+                    content: content,
+                    type: msg.type,
+                    caption: msg.caption,
+                    linkPreview: msg.linkPreview,
+                    timestamp: new Date().toISOString(),
+                    senderId: currentUser!.id,
+                    status: 'sent' as const,
+                });
+            }
 
             const updatedChats = chats.map(chat =>
               chat.id === activeChatId
