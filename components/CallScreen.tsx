@@ -34,7 +34,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
     const initCall = async () => {
         try {
-            setStatusText('Получение доступа к устройствам...');
+            setStatusText('Доступ к устройствам...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: call.type === 'video'
@@ -51,33 +51,39 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             }
 
             // --- НАСТРОЙКА TURN СЕРВЕРОВ ---
-            setStatusText('Настройка безопасного соединения...');
+            setStatusText('Поиск серверов...');
             let iceServers = [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
             ];
 
-            // Запрашиваем список серверов у Metered, если ключи установлены
+            // Запрашиваем список серверов у Metered с таймаутом
             if (METERED_API_KEY && METERED_DOMAIN) {
                 try {
-                    console.log("Fetching Metered ICE servers...");
-                    const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`);
-                    const iceConfig = await response.json();
+                    const controller = new AbortController();
+                    // Если за 2 секунды не получили ответ, используем Google STUN, чтобы не блокировать звонок
+                    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+                    const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`, {
+                        signal: controller.signal
+                    });
                     
-                    if (iceConfig && Array.isArray(iceConfig)) {
-                        iceServers = iceConfig;
-                        console.log("Успешно загружены серверы Metered.ca");
-                    } else {
-                        console.warn("Некорректный ответ от Metered.ca", iceConfig);
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        const iceConfig = await response.json();
+                        if (iceConfig && Array.isArray(iceConfig)) {
+                            iceServers = iceConfig;
+                            console.log("Серверы Metered загружены");
+                        }
                     }
                 } catch (e) {
-                    console.error("Ошибка подключения к Metered.ca (используем Google STUN):", e);
+                    console.warn("Metered.ca недоступен или слишком медленный, используем стандартные сервера.", e);
                 }
-            } else {
-                console.warn("API Key для Metered.ca не установлен. Звонки на мобильном интернете могут не работать.");
             }
 
-            // Создаем PeerConnection с полученными серверами
+            // Создаем PeerConnection с полученными (или стандартными) серверами
+            setStatusText('Установка соединения...');
             const pc = new RTCPeerConnection({ iceServers });
             peerConnectionRef.current = pc;
 
@@ -111,9 +117,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             pc.onconnectionstatechange = () => {
                 console.log("Состояние соединения:", pc.connectionState);
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-                    setStatusText('Связь прервана (проблемы с сетью)');
-                    // Не закрываем сразу, даем шанс переподключиться
-                    // setTimeout(onEndCall, 3000); 
+                    setStatusText('Связь прервана (сеть)');
                 } else if (pc.connectionState === 'connected') {
                     setStatusText('В разговоре');
                 }
@@ -122,28 +126,33 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             // Логика сигнализации (Offer/Answer)
             if (isSupabaseInitialized) {
                 if (call.isIncoming && call.offerPayload) {
-                    setStatusText('Соединение...');
+                    setStatusText('Ответ на звонок...');
                     await pc.setRemoteDescription(new RTCSessionDescription(call.offerPayload));
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     
-                    await AppService.sendSignal(call.user.id, {
+                    const success = await AppService.sendSignal(call.user.id, {
                         type: 'answer',
                         payload: answer,
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
+                    if (!success) setStatusText('Ошибка отправки ответа');
                 } else if (!call.isIncoming) {
-                    setStatusText('Звонок...');
+                    setStatusText('Вызов абонента...');
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
                     
-                    await AppService.sendSignal(call.user.id, {
+                    const success = await AppService.sendSignal(call.user.id, {
                         type: 'offer',
                         payload: { offer, roomId: call.roomId },
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
+                    
+                    if (!success) {
+                        setStatusText('Ошибка: БД недоступна (RLS?)');
+                    }
                 }
             } else {
                 setStatusText("Демо-режим (нет БД)");
@@ -153,7 +162,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         } catch (err) {
             console.error("Error initializing call:", err);
-            setStatusText('Ошибка доступа к камере/микрофону');
+            setStatusText('Ошибка: проверьте камеру/микрофон');
         }
     };
 
@@ -179,6 +188,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         try {
             if (signal.type === 'answer' && !call.isIncoming) {
+                setStatusText('Соединение...');
                 const desc = new RTCSessionDescription(signal.payload);
                 if (pc.signalingState !== 'stable') {
                     await pc.setRemoteDescription(desc);
@@ -232,17 +242,17 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 />
              ) : (
                 <div className="w-full h-full flex items-center justify-center bg-[#111b21]">
-                    <div className="text-center animate-pulse">
-                         <img src={call.user.avatar} alt={call.user.name} className="w-32 h-32 rounded-full mx-auto border-4 border-gray-600 mb-4" />
-                         <h3 className="text-2xl font-bold text-gray-200">{call.user.name}</h3>
-                         <p className="text-gray-400 mt-2">{statusText}</p>
+                    <div className="text-center animate-pulse px-4">
+                         <img src={call.user.avatar} alt={call.user.name} className="w-24 h-24 rounded-full mx-auto border-4 border-gray-600 mb-4" />
+                         <h3 className="text-xl font-bold text-gray-200">{call.user.name}</h3>
+                         <p className="text-gray-400 mt-2 text-sm">{statusText}</p>
                     </div>
                 </div>
              )}
         </div>
 
         {/* Local Video */}
-        <div className="absolute top-4 right-4 z-10 w-32 h-48 sm:w-48 sm:h-64 bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-700 shadow-2xl transition-all duration-300 hover:scale-105">
+        <div className="absolute top-4 right-4 z-10 w-24 h-36 sm:w-32 sm:h-48 bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-700 shadow-2xl transition-all duration-300">
              <video 
                 ref={localVideoRef} 
                 autoPlay 
@@ -252,7 +262,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
              />
              {!isCameraEnabled && (
                  <div className="absolute inset-0 flex items-center justify-center bg-[#202c33]">
-                     <div className="text-xs text-gray-500">Камера выкл.</div>
+                     <div className="text-[10px] text-gray-500 text-center px-1">Камера выкл.</div>
                  </div>
              )}
         </div>
@@ -261,14 +271,14 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
         <div className="absolute bottom-10 left-0 right-0 z-20 flex justify-center items-center gap-6">
             <button 
                 onClick={toggleMic} 
-                className={`p-4 rounded-full shadow-lg transition-transform hover:scale-110 ${isMicEnabled ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-white text-black'}`}
+                className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isMicEnabled ? 'bg-white/20 backdrop-blur-sm text-white' : 'bg-white text-black'}`}
             >
                 {isMicEnabled ? <MicOnIcon className="text-2xl"/> : <MicOffIcon className="text-2xl"/>}
             </button>
 
             <button 
                 onClick={onEndCall} 
-                className="p-5 bg-red-600 rounded-full shadow-lg hover:bg-red-700 transition-transform hover:scale-110"
+                className="p-5 bg-red-600 rounded-full shadow-lg hover:bg-red-700 transition-transform active:scale-95"
             >
                 <PhoneHangupIcon className="text-3xl text-white" />
             </button>
@@ -276,7 +286,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             {call.type === 'video' && (
               <button 
                 onClick={toggleCamera} 
-                className={`p-4 rounded-full shadow-lg transition-transform hover:scale-110 ${isCameraEnabled ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-white text-black'}`}
+                className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isCameraEnabled ? 'bg-white/20 backdrop-blur-sm text-white' : 'bg-white text-black'}`}
               >
                 {isCameraEnabled ? <VideoOnIcon className="text-2xl"/> : <VideoOffIcon className="text-2xl"/>}
               </button>
