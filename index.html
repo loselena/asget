@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ASGET</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.1.1",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+        "react/": "https://aistudiocdn.com/react@^19.1.1/",
+        "react-dom": "https://aistudiocdn.com/react-dom@^19.1.1",
+        "emoji-picker-react": "https://aistudiocdn.com/emoji-picker-react@^4.13.3",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@2.39.3/dist/module/index.js",
+        "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+      }
+    }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.13/dist/sodium.min.js" as="script">
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class', // or 'media'
+    }
+  </script>
+<style>
+  /* Modern, minimal scrollbar using a custom class */
+  .custom-scrollbar {
+    /* For Firefox */
+    scrollbar-width: thin; /* Sets to a thin scrollbar */
+    scrollbar-color: transparent transparent; /* Thumb and track are transparent by default */
+    transition: scrollbar-color 0.3s ease-in-out; /* Smooth transition for Firefox */
+  }
+
+  .custom-scrollbar:hover {
+     /* On hover of the container, make the thumb visible for Firefox */
+     scrollbar-color: rgba(174, 186, 193, 0.125) transparent;
+  }
+
+  /* For Webkit browsers (Chrome, Safari) */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 1px; /* Target width */
+    height: 1px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent; /* Track is always transparent */
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: transparent; /* Thumb is transparent by default */
+    border-radius: 3px;
+    transition: background-color 0.3s ease-in-out; /* Smooth fade in/out */
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    /* On hover of the container, make the thumb visible */
+    background-color: rgba(174, 186, 193, 0.125);
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  
+  /* Custom scrollbar for Emoji Picker */
+  aside.EmojiPickerReact .epr-body {
+    /* For Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s ease-in-out;
+  }
+
+  aside.EmojiPickerReact .epr-body:hover {
+    scrollbar-color: rgba(174, 186, 193, 0.25) transparent;
+  }
+
+  /* For Webkit browsers (Chrome, Safari) */
+  aside.EmojiPickerReact .epr-body::-webkit-scrollbar {
+    width: 2px;
+    height: 2px;
+  }
+
+  aside.EmojiPickerReact .epr-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  aside.EmojiPickerReact .epr-body::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 4px;
+    transition: background-color 0.3s ease-in-out;
+  }
+
+  aside.EmojiPickerReact .epr-body:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(174, 186, 193, 0.25);
+  }
+
+  .bg-chat-pattern::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url('https://asget.ru/img/pattern.svg');
+    background-size: 200px;
+    background-repeat: repeat;
+    pointer-events: none;
+    will-change: transform;
+    opacity: 0.15;
+  }
+</style>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-800">
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
