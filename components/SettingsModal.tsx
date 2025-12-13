@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 // Fix: Corrected import path for types.
 import type { User } from '../types';
 // Fix: Corrected import path for Icons.
 import { XIcon } from './Icons';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 interface SettingsModalProps {
   currentUser: User;
@@ -17,7 +16,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentUser, onClo
   const [avatar, setAvatar] = useState(currentUser.avatar);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  useOnClickOutside(modalRef, onClose);
+  useClickOutside(modalRef, onClose);
 
   useEffect(() => {
     setName(currentUser.name);
