@@ -420,15 +420,27 @@ export const AppService = {
 
   // --- Signaling (WebRTC) ---
   
-  sendSignal: async (recipientId: number, payload: SignalPayload) => {
-      if (!supabase) return;
-      await supabase.from('signals').insert({
+  sendSignal: async (recipientId: number, payload: SignalPayload): Promise<boolean> => {
+      if (!supabase) {
+          console.error("Supabase not initialized, cannot send signal");
+          return false;
+      }
+      
+      console.log(`[AppService] Sending signal (${payload.type}) to user ${recipientId}`);
+      
+      const { error } = await supabase.from('signals').insert({
           type: payload.type,
           payload: payload.payload,
           sender_id: payload.senderId,
           recipient_id: recipientId,
           timestamp: new Date().toISOString()
       });
+      
+      if (error) {
+          console.error("[AppService] Failed to send signal:", error);
+          return false;
+      }
+      return true;
   },
   
   deleteSignal: async (signalId: number) => {
@@ -439,10 +451,13 @@ export const AppService = {
   subscribeToSignals: (currentUserId: number, onSignal: (signal: SignalPayload) => void) => {
       if (!supabase) return () => {};
 
+      console.log(`[AppService] Subscribing to signals for user: ${currentUserId}`);
+
       const channel = supabase.channel(`signals:${currentUserId}`)
         .on('postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'signals', filter: `recipient_id=eq.${currentUserId}` }, 
             (payload) => {
+                console.log("[AppService] Signal received:", payload.new.type);
                 const newSignal = payload.new;
                 onSignal({
                     id: newSignal.id,
@@ -451,13 +466,20 @@ export const AppService = {
                     senderId: newSignal.sender_id,
                     targetId: newSignal.recipient_id
                 });
-                // NOTE: We do NOT delete here automatically anymore. 
-                // The consumer component (App or CallScreen) must delete it after handling.
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                 console.log(`[AppService] Successfully subscribed to signal channel`);
+            }
+            if (status === 'CHANNEL_ERROR') {
+                 console.error(`[AppService] Signal channel subscription error`);
+            }
+        });
 
-      return () => { supabase?.removeChannel(channel); };
+      return () => { 
+          console.log(`[AppService] Unsubscribing from signals`);
+          supabase?.removeChannel(channel); 
+      };
   }
 };
-
