@@ -1,8 +1,7 @@
-// Fix: Implemented the FileManagerModal component.
 import React, { useMemo, useState, useRef } from 'react';
 import type { Chat, Message } from '../types';
 import { XIcon, DocumentTextIcon, PlayIcon, MicIcon, TrashIcon, SingleCheckIcon } from './Icons';
-import { useOnClickOutside } from '../hooks/useOnClickOutside';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { VideoPreviewModal } from './VideoPreviewModal';
 
 interface FileManagerModalProps {
@@ -134,7 +133,7 @@ export const FileManagerModal: React.FC<FileManagerModalProps> = ({ chats, onClo
     const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
     const isConfirmingDeletion = useRef(false);
 
-    useOnClickOutside(modalRef, () => {
+    useClickOutside(modalRef, () => {
         // Когда из этого модального окна открывается модальное окно подтверждения, любой щелчок
         // (подтверждение, отмена, оверлей) технически является "внешним" для этого компонента.
         // Мы используем ref, чтобы отследить, когда активно подтверждение, и игнорировать
