@@ -1,3 +1,4 @@
+
 import type { StickerPack } from '../types';
 
 export const stickerPacks: StickerPack[] = [
@@ -26,17 +27,17 @@ export const stickerPacks: StickerPack[] = [
   },
   {
     id: 'classic_pack',
-    name: 'Классика',
-    icon: 'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker1.webp',
+    name: 'Котики',
+    icon: 'https://robohash.org/cat1?set=set4',
     stickers: [
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker1.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker2.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker3.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker4.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker5.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker6.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker7.webp',
-      'https://raw.githubusercontent.com/jerrykuku/staff-testing/main/sticker8.webp',
+      'https://robohash.org/cat1?set=set4',
+      'https://robohash.org/cat2?set=set4',
+      'https://robohash.org/cat3?set=set4',
+      'https://robohash.org/cat4?set=set4',
+      'https://robohash.org/cat5?set=set4',
+      'https://robohash.org/cat6?set=set4',
+      'https://robohash.org/cat7?set=set4',
+      'https://robohash.org/cat8?set=set4',
     ],
   },
 ];
