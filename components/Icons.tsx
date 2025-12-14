@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 // Fix: Add title prop to allow for tooltips on icons.
@@ -48,5 +47,3 @@ export const CircleCheckIcon: React.FC<IconProps> = (props) => <FaIcon iconClass
 export const PlusIcon: React.FC<IconProps> = (props) => <FaIcon iconClass="fa-solid fa-plus" {...props} />;
 export const ChevronLeftIcon: React.FC<IconProps> = (props) => <FaIcon iconClass="fa-solid fa-chevron-left" {...props} />;
 export const ChevronRightIcon: React.FC<IconProps> = (props) => <FaIcon iconClass="fa-solid fa-chevron-right" {...props} />;
-export const VolumeHighIcon: React.FC<IconProps> = (props) => <FaIcon iconClass="fa-solid fa-volume-high" {...props} />;
-export const VolumeLowIcon: React.FC<IconProps> = (props) => <FaIcon iconClass="fa-solid fa-phone" {...props} />;
