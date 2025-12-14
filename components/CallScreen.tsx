@@ -23,7 +23,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const [isMicEnabled, setMicEnabled] = useState(true);
   const [isCameraEnabled, setCameraEnabled] = useState(call.type === 'video');
   const [statusText, setStatusText] = useState('Инициализация...');
-  const [isPcReady, setIsPcReady] = useState(false); // New state to gate subscription
+  const [isPcReady, setIsPcReady] = useState(false);
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -35,9 +35,15 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const candidateQueue = useRef<RTCIceCandidateInit[]>([]);
   
   const processedCandidates = useRef<Set<string>>(new Set());
+  // Track processed signal IDs to prevent duplicates from Polling + Subscription race
+  const processedSignalIds = useRef<Set<number>>(new Set());
 
   // Consolidated Signal Processing Logic
   const processSignal = useCallback(async (signal: SignalPayload, pc: RTCPeerConnection) => {
+      // Prevent processing the same signal ID twice
+      if (signal.id && processedSignalIds.current.has(signal.id)) return;
+      if (signal.id) processedSignalIds.current.add(signal.id);
+
       try {
           if (signal.type === 'answer' && !call.isIncoming) {
                // Handle Answer for outgoing call
@@ -68,7 +74,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                             console.error("Error adding received ice candidate", err);
                         }
                     } else {
-                        console.log("Queuing ICE candidate...");
+                        // console.log("Queuing ICE candidate...");
                         candidateQueue.current.push(candidateInit);
                     }
                }
@@ -83,6 +89,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
       }
   }, [call.isIncoming]);
 
+  // 1. Initialize Call (Media & PC)
   useEffect(() => {
     let isMounted = true;
 
@@ -91,7 +98,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             setStatusText('Доступ к устройствам...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: true // Always request video initially to avoid renegotiation, toggle tracks later
+                video: true // Always request video initially to avoid renegotiation issues
             });
             
             // Apply initial preference
@@ -143,7 +150,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             const pc = new RTCPeerConnection({ iceServers });
             peerConnectionRef.current = pc;
 
-            // Important: Trigger state update so subscription hook can run
+            // Trigger state update so subscription/polling hooks can run
             setIsPcReady(true);
 
             stream.getTracks().forEach(track => {
@@ -188,7 +195,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     await pc.setRemoteDescription(new RTCSessionDescription(call.offerPayload));
                     
                     isRemoteDescriptionSet.current = true;
-                    // Flush queue (though likely empty at this exact millisecond)
+                    // Flush queue
                     for (const candidate of candidateQueue.current) {
                         await pc.addIceCandidate(new RTCIceCandidate(candidate));
                     }
@@ -215,14 +222,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
-                }
-                
-                // CRITICAL FIX: Fetch signals that arrived while we were initializing (e.g. while modal was open)
-                const pendingSignals = await AppService.getSignals(currentUser.id);
-                for (const signal of pendingSignals) {
-                     if (signal.senderId === call.user.id) {
-                         await processSignal(signal, pc);
-                     }
                 }
             } else {
                 setStatusText("Демо-режим (нет БД)");
@@ -253,8 +252,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
     };
   }, []); 
 
+  // 2. Realtime Subscription (Primary)
   useEffect(() => {
-    // Only subscribe when Supabase is ready AND PeerConnection is created
     if (!isSupabaseInitialized || !isPcReady || !peerConnectionRef.current) return;
 
     const unsubSignals = AppService.subscribeToSignals(currentUser.id, async (signal) => {
@@ -268,18 +267,45 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
     };
   }, [call.user.id, currentUser.id, isPcReady, processSignal]);
 
+  // 3. Polling Fallback (Secondary - for when WebSocket fails)
+  useEffect(() => {
+    if (!isSupabaseInitialized || !isPcReady || !peerConnectionRef.current) return;
+
+    // Poll frequently (every 1s) to simulate realtime if socket is dead
+    const pollInterval = setInterval(async () => {
+        const pc = peerConnectionRef.current;
+        // Stop polling if connection is fully established to save resources
+        if (!pc || pc.connectionState === 'connected') return;
+
+        const pendingSignals = await AppService.getSignals(currentUser.id);
+        if (pendingSignals.length > 0) {
+            console.log(`[Polling] Fetched ${pendingSignals.length} signals manually`);
+        }
+        
+        for (const signal of pendingSignals) {
+             if (signal.senderId === call.user.id) {
+                 await processSignal(signal, pc);
+             }
+        }
+    }, 1000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentUser.id, call.user.id, isPcReady, processSignal]);
+
 
   const toggleMic = () => {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = !isMicEnabled);
-      setMicEnabled(!isMicEnabled);
+      const enabled = !isMicEnabled;
+      localStream.getAudioTracks().forEach(track => track.enabled = enabled);
+      setMicEnabled(enabled);
     }
   };
 
   const toggleCamera = () => {
     if (localStream) {
-      localStream.getVideoTracks().forEach(track => track.enabled = !isCameraEnabled);
-      setCameraEnabled(!isCameraEnabled);
+      const enabled = !isCameraEnabled;
+      localStream.getVideoTracks().forEach(track => track.enabled = enabled);
+      setCameraEnabled(enabled);
     }
   };
 
@@ -287,14 +313,13 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden animate-fadeIn">
         {/* Remote Video */}
         <div className="absolute inset-0 z-0">
-             {remoteStream ? (
-                <video 
-                    ref={remoteVideoRef} 
-                    autoPlay 
-                    playsInline 
-                    className="w-full h-full object-cover"
-                />
-             ) : (
+             <video 
+                ref={remoteVideoRef} 
+                autoPlay 
+                playsInline 
+                className={`w-full h-full object-cover ${remoteStream ? 'opacity-100' : 'opacity-0'}`}
+             />
+             {!remoteStream && (
                 <div className="w-full h-full flex items-center justify-center bg-[#111b21]">
                     <div className="text-center animate-pulse px-4">
                          <img src={call.user.avatar} alt={call.user.name} className="w-24 h-24 rounded-full mx-auto border-4 border-gray-600 mb-4" />
