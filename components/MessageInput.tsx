@@ -412,7 +412,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
   }
 
   return (
-    <div className="px-4 py-2 bg-[#202c33] border-t border-[#2f3b44] relative z-10">
+    // Added 'flex-shrink-0' to keep the input at the bottom and 'relative z-10' for context.
+    <div className="px-4 py-2 bg-[#202c33] border-t border-[#2f3b44] relative z-10 flex-shrink-0">
       {/* Pop-up menus */}
       <div className="relative">
         <div ref={mediaPickerRef}>
