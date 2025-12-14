@@ -1,6 +1,6 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-import type { Call, User } from '../types';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import type { Call, User, SignalPayload } from '../types';
 import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon } from './Icons';
 import { AppService } from '../services/AppService';
 import { isSupabaseInitialized } from '../services/supabase';
@@ -23,6 +23,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const [isMicEnabled, setMicEnabled] = useState(true);
   const [isCameraEnabled, setCameraEnabled] = useState(call.type === 'video');
   const [statusText, setStatusText] = useState('Инициализация...');
+  const [isPcReady, setIsPcReady] = useState(false); // New state to gate subscription
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -34,6 +35,53 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const candidateQueue = useRef<RTCIceCandidateInit[]>([]);
   
   const processedCandidates = useRef<Set<string>>(new Set());
+
+  // Consolidated Signal Processing Logic
+  const processSignal = useCallback(async (signal: SignalPayload, pc: RTCPeerConnection) => {
+      try {
+          if (signal.type === 'answer' && !call.isIncoming) {
+               // Handle Answer for outgoing call
+               setStatusText('Соединение...');
+               const desc = new RTCSessionDescription(signal.payload);
+               if (pc.signalingState !== 'stable') {
+                   await pc.setRemoteDescription(desc);
+                   isRemoteDescriptionSet.current = true;
+                   
+                   // Flush queue
+                   for (const candidate of candidateQueue.current) {
+                       await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                   }
+                   candidateQueue.current = [];
+               }
+          } else if (signal.type === 'candidate') {
+               // Handle ICE Candidate
+               const candidateInit = signal.payload;
+               const candidateStr = JSON.stringify(candidateInit);
+               
+               if (!processedCandidates.current.has(candidateStr)) {
+                    processedCandidates.current.add(candidateStr);
+                    
+                    if (isRemoteDescriptionSet.current) {
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+                        } catch (err) {
+                            console.error("Error adding received ice candidate", err);
+                        }
+                    } else {
+                        console.log("Queuing ICE candidate...");
+                        candidateQueue.current.push(candidateInit);
+                    }
+               }
+          }
+          
+          // Cleanup signal from DB
+          if (signal.id) {
+              await AppService.deleteSignal(signal.id);
+          }
+      } catch (e) {
+          console.error("Error processing signal:", e);
+      }
+  }, [call.isIncoming]);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,7 +116,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 { urls: 'stun:stun1.l.google.com:19302' },
             ];
 
-            // Запрашиваем список серверов у Metered с таймаутом
             if (METERED_API_KEY && METERED_DOMAIN) {
                 try {
                     const controller = new AbortController();
@@ -84,11 +131,10 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                         const iceConfig = await response.json();
                         if (iceConfig && Array.isArray(iceConfig)) {
                             iceServers = iceConfig;
-                            console.log("Серверы Metered загружены");
                         }
                     }
                 } catch (e) {
-                    console.warn("Metered.ca недоступен или слишком медленный, используем стандартные сервера.", e);
+                    console.warn("Metered.ca timed out, using default STUN.");
                 }
             }
 
@@ -97,12 +143,14 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             const pc = new RTCPeerConnection({ iceServers });
             peerConnectionRef.current = pc;
 
+            // Important: Trigger state update so subscription hook can run
+            setIsPcReady(true);
+
             stream.getTracks().forEach(track => {
                 pc.addTrack(track, stream);
             });
 
             pc.ontrack = (event) => {
-                console.log("Получен удаленный поток", event.streams);
                 const [remote] = event.streams;
                 if (remote) {
                     setRemoteStream(remote);
@@ -125,7 +173,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             };
 
             pc.onconnectionstatechange = () => {
-                console.log("Состояние соединения:", pc.connectionState);
+                console.log("Connection State:", pc.connectionState);
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
                     setStatusText('Связь прервана (сеть)');
                 } else if (pc.connectionState === 'connected') {
@@ -139,9 +187,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     setStatusText('Ответ на звонок...');
                     await pc.setRemoteDescription(new RTCSessionDescription(call.offerPayload));
                     
-                    // Mark ready for candidates
                     isRemoteDescriptionSet.current = true;
-                    // Flush queue
+                    // Flush queue (though likely empty at this exact millisecond)
                     for (const candidate of candidateQueue.current) {
                         await pc.addIceCandidate(new RTCIceCandidate(candidate));
                     }
@@ -150,28 +197,32 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     
-                    const success = await AppService.sendSignal(call.user.id, {
+                    await AppService.sendSignal(call.user.id, {
                         type: 'answer',
                         payload: answer,
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
-                    if (!success) setStatusText('Ошибка отправки ответа');
+                    
                 } else if (!call.isIncoming) {
                     setStatusText('Вызов абонента...');
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
                     
-                    const success = await AppService.sendSignal(call.user.id, {
+                    await AppService.sendSignal(call.user.id, {
                         type: 'offer',
                         payload: { offer, roomId: call.roomId },
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
-                    
-                    if (!success) {
-                        setStatusText('Ошибка: БД недоступна (RLS?)');
-                    }
+                }
+                
+                // CRITICAL FIX: Fetch signals that arrived while we were initializing (e.g. while modal was open)
+                const pendingSignals = await AppService.getSignals(currentUser.id);
+                for (const signal of pendingSignals) {
+                     if (signal.senderId === call.user.id) {
+                         await processSignal(signal, pc);
+                     }
                 }
             } else {
                 setStatusText("Демо-режим (нет БД)");
@@ -181,11 +232,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         } catch (err) {
             console.error("Error initializing call:", err);
-            // Handle specific getUserMedia errors
             if (err instanceof DOMException && err.name === 'NotAllowedError') {
                  setStatusText('Ошибка: Доступ к камере запрещен');
-            } else if (err instanceof DOMException && err.name === 'NotFoundError') {
-                 setStatusText('Ошибка: Камера или микрофон не найдены');
             } else {
                  setStatusText('Ошибка инициализации звонка');
             }
@@ -206,54 +254,19 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   }, []); 
 
   useEffect(() => {
-    if (!isSupabaseInitialized || !peerConnectionRef.current) return;
+    // Only subscribe when Supabase is ready AND PeerConnection is created
+    if (!isSupabaseInitialized || !isPcReady || !peerConnectionRef.current) return;
 
     const unsubSignals = AppService.subscribeToSignals(currentUser.id, async (signal) => {
         const pc = peerConnectionRef.current;
         if (!pc || signal.senderId !== call.user.id) return;
-
-        try {
-            if (signal.type === 'answer' && !call.isIncoming) {
-                setStatusText('Соединение...');
-                const desc = new RTCSessionDescription(signal.payload);
-                if (pc.signalingState !== 'stable') {
-                    await pc.setRemoteDescription(desc);
-                    // Mark ready for candidates
-                    isRemoteDescriptionSet.current = true;
-                    // Flush queue
-                    for (const candidate of candidateQueue.current) {
-                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                    }
-                    candidateQueue.current = [];
-                }
-            } else if (signal.type === 'candidate') {
-                const candidateInit = signal.payload;
-                const candidateStr = JSON.stringify(candidateInit);
-                
-                if (!processedCandidates.current.has(candidateStr)) {
-                     processedCandidates.current.add(candidateStr);
-                     
-                     if (isRemoteDescriptionSet.current) {
-                         await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
-                     } else {
-                         // Queue candidate until remote description is set
-                         console.log("Queuing ICE candidate...");
-                         candidateQueue.current.push(candidateInit);
-                     }
-                }
-            }
-            if (signal.id) {
-                await AppService.deleteSignal(signal.id);
-            }
-        } catch (e) {
-            console.error("Error processing signal:", e);
-        }
+        await processSignal(signal, pc);
     });
 
     return () => {
         unsubSignals();
     };
-  }, [call.user.id, currentUser.id, call.isIncoming]);
+  }, [call.user.id, currentUser.id, isPcReady, processSignal]);
 
 
   const toggleMic = () => {
