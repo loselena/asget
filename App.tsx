@@ -453,7 +453,11 @@ const App: React.FC = () => {
         if (!currentUser) return;
         
         if (isSupabaseInitialized) {
-            const updatedUser = await AppService.createOrUpdateUser(currentUser.uid, updates.name || currentUser.name);
+            // FIX: Use updateUserProfile to properly update fields in the database.
+            // Previously `createOrUpdateUser` was used, which only handled initial creation and ignored avatar updates.
+            await AppService.updateUserProfile(currentUser.uid, updates);
+            
+            // Optimistic update locally
             setCurrentUser({ ...currentUser, ...updates }); 
             setSettingsOpen(false);
             return;
