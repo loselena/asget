@@ -426,7 +426,7 @@ export const AppService = {
           return false;
       }
       
-      console.log(`[AppService] Sending signal (${payload.type}) to user ${recipientId}`);
+      // console.log(`[AppService] Sending signal (${payload.type}) to user ${recipientId}`);
       
       const { error } = await supabase.from('signals').insert({
           type: payload.type,
@@ -472,34 +472,34 @@ export const AppService = {
   subscribeToSignals: (currentUserId: number, onSignal: (signal: SignalPayload) => void) => {
       if (!supabase) return () => {};
 
-      console.log(`[AppService] Subscribing to signals for user: ${currentUserId}`);
+      // FIX: Use a unique topic name (by appending random ID) to ensure multiple subscriptions 
+      // (from App.tsx and CallScreen.tsx) do not share the same channel reference.
+      // This prevents 'removeChannel' in CallScreen from disconnecting App.tsx's listener.
+      const topic = `signals:${currentUserId}:${Math.random().toString(36).substring(7)}`;
 
-      const channel = supabase.channel(`signals:${currentUserId}`)
+      console.log(`[AppService] Subscribing to signals on topic: ${topic}`);
+
+      const channel = supabase.channel(topic)
         .on('postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'signals', filter: `recipient_id=eq.${currentUserId}` }, 
             (payload) => {
-                console.log("[AppService] Signal received:", payload.new.type);
                 const newSignal = payload.new;
-                onSignal({
-                    id: newSignal.id,
-                    type: newSignal.type,
-                    payload: newSignal.payload,
-                    senderId: newSignal.sender_id,
-                    targetId: newSignal.recipient_id
-                });
+                // Basic validation
+                if (newSignal && newSignal.type) {
+                     onSignal({
+                        id: newSignal.id,
+                        type: newSignal.type,
+                        payload: newSignal.payload,
+                        senderId: newSignal.sender_id,
+                        targetId: newSignal.recipient_id
+                    });
+                }
             }
         )
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                 console.log(`[AppService] Successfully subscribed to signal channel`);
-            }
-            if (status === 'CHANNEL_ERROR') {
-                 console.error(`[AppService] Signal channel subscription error`);
-            }
-        });
+        .subscribe();
 
       return () => { 
-          console.log(`[AppService] Unsubscribing from signals`);
+          // console.log(`[AppService] Unsubscribing from topic: ${topic}`);
           supabase?.removeChannel(channel); 
       };
   }
