@@ -12,10 +12,21 @@ interface CallScreenProps {
 }
 
 // ------------------------------------------------------------------
-// НАСТРОЙКИ METERED.CA
+// НАСТРОЙКИ METERED.CA (TURN SERVER)
+// Необходим для работы через мобильный интернет (CGNAT)
 // ------------------------------------------------------------------
 const METERED_DOMAIN = 'asget.metered.live';
 const METERED_API_KEY = 'Tf3UbNrIyb8djfhaxMOk_Ncu_MxbneRMaP3nDPV5tRPv-gnj';
+
+// Расширенный список бесплатных STUN серверов (Fallback)
+const DEFAULT_ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+];
 
 export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEndCall }) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -114,16 +125,15 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             }
 
             // --- НАСТРОЙКА TURN СЕРВЕРОВ ---
-            setStatusText('Поиск серверов...');
-            let iceServers = [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-            ];
+            // Мобильные сети требуют TURN. Пытаемся получить его.
+            setStatusText('Настройка сети...');
+            let iceServers = [...DEFAULT_ICE_SERVERS];
 
             if (METERED_API_KEY && METERED_DOMAIN) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 2000);
+                    // Увеличен таймаут до 5000мс для мобильных сетей (высокая латентность)
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
                     const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`, {
                         signal: controller.signal
@@ -134,17 +144,25 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     if (response.ok) {
                         const iceConfig = await response.json();
                         if (iceConfig && Array.isArray(iceConfig)) {
-                            iceServers = iceConfig;
+                            // Metered возвращает список, используем его как приоритетный
+                            iceServers = [...iceConfig, ...DEFAULT_ICE_SERVERS];
+                            console.log("TURN credentials loaded successfully");
                         }
+                    } else {
+                        console.warn("Metered.ca returned error status:", response.status);
                     }
                 } catch (e) {
-                    console.warn("Metered.ca timed out, using default STUN.");
+                    console.warn("Metered.ca timed out or failed, using default STUN only. Connection may fail on mobile networks.");
                 }
             }
 
             // Создаем PeerConnection
             setStatusText('Установка соединения...');
-            const pc = new RTCPeerConnection({ iceServers });
+            const pc = new RTCPeerConnection({ 
+                iceServers,
+                iceCandidatePoolSize: 10, // Предварительная генерация кандидатов для ускорения
+                iceTransportPolicy: 'all' // Разрешить и STUN, и TURN
+            });
             peerConnectionRef.current = pc;
 
             // Trigger state update so subscription/polling hooks can run
@@ -178,8 +196,10 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
             pc.onconnectionstatechange = () => {
                 console.log("Connection State:", pc.connectionState);
-                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-                    setStatusText('Связь прервана (сеть)');
+                if (pc.connectionState === 'disconnected') {
+                     setStatusText('Связь прервана');
+                } else if (pc.connectionState === 'failed') {
+                     setStatusText('Не удалось соединиться (NAT/Firewall)');
                 } else if (pc.connectionState === 'connected') {
                     setStatusText('В разговоре');
                 }
