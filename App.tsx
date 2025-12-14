@@ -627,7 +627,9 @@ const App: React.FC = () => {
     }
 
     return (
-        <div className="flex h-screen w-screen bg-gray-900 text-white font-sans overflow-hidden">
+        // Changed to fixed inset-0 and 100dvh (dynamic viewport height) to prevent mobile browser chrome scroll issues.
+        // This ensures the app acts as a fixed full-screen application.
+        <div className="fixed inset-0 flex h-[100dvh] w-screen bg-gray-900 text-white font-sans overflow-hidden">
             <div className={`flex-shrink-0 w-full md:w-[30%] lg:w-[30%] xl:w-[25%] md:max-w-sm ${activeChatId !== null ? 'hidden md:block' : 'block'}`}>
                 <Sidebar
                     currentUser={currentUser}
@@ -641,7 +643,7 @@ const App: React.FC = () => {
                 />
             </div>
             
-            <main className={`flex-1 flex-col ${activeChatId !== null ? 'flex' : 'hidden md:flex'}`}>
+            <main className={`flex-1 flex-col overflow-hidden ${activeChatId !== null ? 'flex' : 'hidden md:flex'}`}>
                 {activeChat && contactUser ? (
                     <ChatWindow
                         key={activeChatId}
