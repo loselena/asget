@@ -42,13 +42,16 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   // Helper to switch audio output device
   const setAudioOutput = async (enableSpeaker: boolean) => {
       const videoElement = remoteVideoRef.current as any;
+      
+      // Check for browser support
       if (!videoElement || typeof videoElement.setSinkId !== 'function') {
-          console.warn("Browser does not support setSinkId");
           return;
       }
 
       try {
-          await navigator.mediaDevices.getUserMedia({ audio: true }); // Request permissions to list labels
+          // REMOVED: await navigator.mediaDevices.getUserMedia(...) 
+          // We already have permissions from the active call stream. Requesting again breaks the stream.
+          
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
           
@@ -57,19 +60,18 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
           if (enableSpeaker) {
               // Try to find a device explicitly labeled 'speaker'
               const speaker = audioOutputs.find(d => d.label.toLowerCase().includes('speaker'));
-              targetDeviceId = speaker ? speaker.deviceId : ""; // fallback to default if not found, usually speaker
+              // Fallback to default, which is usually speaker for media elements
+              targetDeviceId = speaker ? speaker.deviceId : ""; 
           } else {
-              // Try to find 'earpiece', 'receiver', 'headset' or 'communications'
-              // Note: On many mobile browsers, 'default' is the earpiece during a "call", 
-              // but for WebRTC media, it often defaults to speaker. 
+              // Try to find 'earpiece', 'receiver', 'headset'
               const earpiece = audioOutputs.find(d => 
                   d.label.toLowerCase().includes('receiver') || 
                   d.label.toLowerCase().includes('earpiece') ||
                   d.label.toLowerCase().includes('headset') ||
                   d.label.toLowerCase().includes('communications')
               );
-              // If we found a specific earpiece/headset, use it. 
-              // Otherwise, we might need to rely on the OS default for "default".
+              // If specific earpiece found, use it. Otherwise empty string often defaults to system default.
+              // Note: Handling "earpiece" on mobile web is tricky; often requires OS level routing.
               targetDeviceId = earpiece ? earpiece.deviceId : "default";
           }
 
@@ -85,6 +87,17 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
       setSpeakerOn(newState);
       setAudioOutput(newState);
   };
+  
+  // Apply audio output settings whenever remote stream changes or call type initializes
+  useEffect(() => {
+      if (remoteStream) {
+          // Apply initial preference (Voice -> False/Earpiece, Video -> True/Speaker)
+          const initialSpeakerState = call.type === 'video';
+          setSpeakerOn(initialSpeakerState);
+          setAudioOutput(initialSpeakerState);
+      }
+  }, [remoteStream, call.type]);
+
 
   // Consolidated Signal Processing Logic
   const processSignal = useCallback(async (signal: SignalPayload, pc: RTCPeerConnection) => {
@@ -122,7 +135,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                             console.error("Error adding received ice candidate", err);
                         }
                     } else {
-                        // console.log("Queuing ICE candidate...");
                         candidateQueue.current.push(candidateInit);
                     }
                }
@@ -207,10 +219,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     setRemoteStream(remote);
                     if (remoteVideoRef.current) {
                         remoteVideoRef.current.srcObject = remote;
-                        // Attempt to set initial audio output based on call type
-                        // For voice calls, we try to set it to earpiece (false)
-                        // For video calls, we default to speaker (true)
-                        setAudioOutput(call.type === 'video');
+                        // IMPORTANT: Audio output setting moved to useEffect [remoteStream]
+                        // to prevent race conditions in this callback.
                     }
                     setStatusText('Соединение установлено');
                 }
