@@ -89,6 +89,12 @@ export const AppService = {
     };
   },
 
+  updateUserProfile: async (uid: string, updates: { name?: string; avatar?: string }) => {
+      if (!supabase) return;
+      const { error } = await supabase.from('users').update(updates).eq('uid', uid);
+      if (error) console.error("Error updating user profile:", error);
+  },
+
   setOnlineStatus: async (uid: string, isOnline: boolean) => {
       if (!supabase) return;
       await supabase.from('users').update({ is_online: isOnline }).eq('uid', uid);
