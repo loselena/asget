@@ -96,15 +96,11 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
     const initCall = async () => {
         try {
             setStatusText('Доступ к устройствам...');
+            // Only request video if it is a video call
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: true // Always request video initially to avoid renegotiation issues
+                video: call.type === 'video'
             });
-            
-            // Apply initial preference
-            if (call.type === 'voice') {
-                stream.getVideoTracks().forEach(t => t.enabled = false);
-            }
             
             if (!isMounted) {
                 stream.getTracks().forEach(track => track.stop());
@@ -218,7 +214,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     
                     await AppService.sendSignal(call.user.id, {
                         type: 'offer',
-                        payload: { offer, roomId: call.roomId },
+                        // Include callType in payload so recipient accepts as correct type
+                        payload: { offer, roomId: call.roomId, callType: call.type },
                         senderId: currentUser.id,
                         targetId: call.user.id
                     });
@@ -311,16 +308,19 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden animate-fadeIn">
-        {/* Remote Video */}
+        {/* Remote Video Container */}
         <div className="absolute inset-0 z-0">
+             {/* Always render video element for audio playback, but hide it if it's a voice call or no video stream */}
              <video 
                 ref={remoteVideoRef} 
                 autoPlay 
                 playsInline 
-                className={`w-full h-full object-cover ${remoteStream ? 'opacity-100' : 'opacity-0'}`}
+                className={`w-full h-full object-cover ${call.type === 'video' && remoteStream ? 'opacity-100' : 'opacity-0'}`}
              />
-             {!remoteStream && (
-                <div className="w-full h-full flex items-center justify-center bg-[#111b21]">
+             
+             {/* Avatar Overlay (Visible if voice call OR no video stream yet) */}
+             {(!remoteStream || call.type === 'voice') && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#111b21] z-10">
                     <div className="text-center animate-pulse px-4">
                          <img src={call.user.avatar} alt={call.user.name} className="w-24 h-24 rounded-full mx-auto border-4 border-gray-600 mb-4" />
                          <h3 className="text-xl font-bold text-gray-200">{call.user.name}</h3>
@@ -330,21 +330,23 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
              )}
         </div>
 
-        {/* Local Video */}
-        <div className="absolute top-4 right-4 z-10 w-24 h-36 sm:w-32 sm:h-48 bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-700 shadow-2xl transition-all duration-300">
-             <video 
-                ref={localVideoRef} 
-                autoPlay 
-                muted 
-                playsInline 
-                className={`w-full h-full object-cover ${isCameraEnabled ? 'opacity-100' : 'opacity-0'}`}
-             />
-             {!isCameraEnabled && (
-                 <div className="absolute inset-0 flex items-center justify-center bg-[#202c33]">
-                     <div className="text-[10px] text-gray-500 text-center px-1">Камера выкл.</div>
-                 </div>
-             )}
-        </div>
+        {/* Local Video (Only for Video Calls) */}
+        {call.type === 'video' && (
+            <div className="absolute top-4 right-4 z-10 w-24 h-36 sm:w-32 sm:h-48 bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-700 shadow-2xl transition-all duration-300">
+                 <video 
+                    ref={localVideoRef} 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    className={`w-full h-full object-cover ${isCameraEnabled ? 'opacity-100' : 'opacity-0'}`}
+                 />
+                 {!isCameraEnabled && (
+                     <div className="absolute inset-0 flex items-center justify-center bg-[#202c33]">
+                         <div className="text-[10px] text-gray-500 text-center px-1">Камера выкл.</div>
+                     </div>
+                 )}
+            </div>
+        )}
 
         {/* Controls */}
         <div className="absolute bottom-10 left-0 right-0 z-20 flex justify-center items-center gap-6">
@@ -362,6 +364,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                 <PhoneHangupIcon className="text-3xl text-white" />
             </button>
 
+            {/* Toggle Camera (Only for Video Calls) */}
             {call.type === 'video' && (
               <button 
                 onClick={toggleCamera} 
