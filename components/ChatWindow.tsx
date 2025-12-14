@@ -1,3 +1,4 @@
+
 // Fix: Implemented the ChatWindow component structure.
 import React from 'react';
 import type { User, Chat, Message, LinkPreview } from '../types';
@@ -44,7 +45,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   showConfirm,
 }) => {
   return (
-    <div className="flex flex-col h-full bg-[#182229] bg-chat-pattern relative transform">
+    // Changed: Remove 'transform' and add 'overflow-hidden'. 
+    // This strictly confines the flex column to the parent's height (100dvh from App).
+    <div className="flex flex-col h-full bg-[#182229] bg-chat-pattern relative overflow-hidden">
       <ChatHeader user={contactUser} onBack={onBack} onStartCall={onStartCall} />
       <MessageList
         messages={chat.messages}
