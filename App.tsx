@@ -480,9 +480,12 @@ const App: React.FC = () => {
         if (!incomingCallSignal || !currentUser) return;
         const { signal, caller } = incomingCallSignal;
         
+        // Extract call type from payload if available, default to video for backward compatibility
+        const callType = (signal.payload as any).callType || 'video';
+
         setCurrentCall({ 
             user: caller, 
-            type: 'video', // Defaulting to video, can be adjusted if signal carries type
+            type: callType,
             isIncoming: true, 
             roomId: signal.payload.roomId,
             offerPayload: signal.payload.offer
