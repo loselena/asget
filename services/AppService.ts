@@ -447,6 +447,27 @@ export const AppService = {
       if (!supabase) return;
       await supabase.from('signals').delete().eq('id', signalId);
   },
+  
+  getSignals: async (userId: number): Promise<SignalPayload[]> => {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from('signals')
+        .select('*')
+        .eq('recipient_id', userId);
+      
+      if (error) {
+          console.error("Error fetching pending signals:", error);
+          return [];
+      }
+      
+      return data.map((s: any) => ({
+          id: s.id,
+          type: s.type,
+          payload: s.payload,
+          senderId: s.sender_id,
+          targetId: s.recipient_id
+      }));
+  },
 
   subscribeToSignals: (currentUserId: number, onSignal: (signal: SignalPayload) => void) => {
       if (!supabase) return () => {};
