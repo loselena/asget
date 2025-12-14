@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Call, User, SignalPayload } from '../types';
-import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon, VolumeHighIcon, VolumeLowIcon } from './Icons';
+import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon } from './Icons';
 import { AppService } from '../services/AppService';
 import { isSupabaseInitialized } from '../services/supabase';
 
@@ -22,12 +22,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMicEnabled, setMicEnabled] = useState(true);
   const [isCameraEnabled, setCameraEnabled] = useState(call.type === 'video');
-  
-  // State for Speakerphone: 
-  // Video calls default to Speaker (true). 
-  // Voice calls default to Earpiece (false).
-  const [isSpeakerOn, setSpeakerOn] = useState(call.type === 'video'); 
-  
   const [statusText, setStatusText] = useState('Инициализация...');
   const [isPcReady, setIsPcReady] = useState(false);
   
@@ -43,70 +37,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const processedCandidates = useRef<Set<string>>(new Set());
   // Track processed signal IDs to prevent duplicates from Polling + Subscription race
   const processedSignalIds = useRef<Set<number>>(new Set());
-
-  // Helper to switch audio output device
-  // IMPORTANT: We do NOT call getUserMedia here, as it breaks the active call stream.
-  const setAudioOutput = useCallback(async (enableSpeaker: boolean) => {
-      const videoElement = remoteVideoRef.current as any;
-      
-      // Check for browser support (Chrome/Edge/Android Webview support setSinkId)
-      if (!videoElement || typeof videoElement.setSinkId !== 'function') {
-          console.warn("setSinkId is not supported in this browser.");
-          return;
-      }
-
-      try {
-          // Since we already have permission from the active call, we can just enumerate.
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
-          
-          let targetDeviceId = "";
-
-          if (enableSpeaker) {
-              // Try to find a device explicitly labeled 'speaker'
-              const speaker = audioOutputs.find(d => d.label.toLowerCase().includes('speaker'));
-              // If found, use it. If not, empty string usually defaults to system default (often speaker for media).
-              targetDeviceId = speaker ? speaker.deviceId : ""; 
-          } else {
-              // Try to find 'earpiece', 'receiver', 'handset', 'headset'
-              const earpiece = audioOutputs.find(d => 
-                  d.label.toLowerCase().includes('receiver') || 
-                  d.label.toLowerCase().includes('earpiece') ||
-                  d.label.toLowerCase().includes('handset') ||
-                  d.label.toLowerCase().includes('headset')
-              );
-              
-              // If we found a specific earpiece, use it. 
-              if (earpiece) {
-                  targetDeviceId = earpiece.deviceId;
-              } else {
-                  // Fallback strategy: find the "default" device or any device that DOESN'T say speaker
-                  const nonSpeaker = audioOutputs.find(d => d.deviceId === 'default' || !d.label.toLowerCase().includes('speaker'));
-                  targetDeviceId = nonSpeaker ? nonSpeaker.deviceId : "";
-              }
-          }
-
-          await videoElement.setSinkId(targetDeviceId);
-          console.log(`Audio output switched to: ${enableSpeaker ? 'Speaker' : 'Earpiece'} (ID: ${targetDeviceId})`);
-      } catch (error) {
-          console.error("Failed to set audio output:", error);
-      }
-  }, []);
-
-  const toggleSpeaker = () => {
-      const newState = !isSpeakerOn;
-      setSpeakerOn(newState);
-      setAudioOutput(newState);
-  };
-  
-  // Apply audio output settings whenever remote stream becomes available or call type changes
-  useEffect(() => {
-      if (remoteStream && remoteVideoRef.current) {
-          // Apply the current state preference
-          setAudioOutput(isSpeakerOn);
-      }
-  }, [remoteStream, isSpeakerOn, setAudioOutput]);
-
 
   // Consolidated Signal Processing Logic
   const processSignal = useCallback(async (signal: SignalPayload, pc: RTCPeerConnection) => {
@@ -144,6 +74,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                             console.error("Error adding received ice candidate", err);
                         }
                     } else {
+                        // console.log("Queuing ICE candidate...");
                         candidateQueue.current.push(candidateInit);
                     }
                }
@@ -228,7 +159,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     setRemoteStream(remote);
                     if (remoteVideoRef.current) {
                         remoteVideoRef.current.srcObject = remote;
-                        // Audio switching is handled in the separate useEffect depending on remoteStream
                     }
                     setStatusText('Соединение установлено');
                 }
@@ -420,17 +350,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         {/* Controls */}
         <div className="absolute bottom-10 left-0 right-0 z-20 flex justify-center items-center gap-6">
-            
-            {/* Speaker Toggle (Only for Voice Calls) */}
-            {call.type === 'voice' && (
-                <button 
-                    onClick={toggleSpeaker} 
-                    className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isSpeakerOn ? 'bg-white text-black' : 'bg-white/20 backdrop-blur-sm text-white'}`}
-                >
-                    {isSpeakerOn ? <VolumeHighIcon className="text-2xl"/> : <VolumeLowIcon className="text-2xl"/>}
-                </button>
-            )}
-
             <button 
                 onClick={toggleMic} 
                 className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isMicEnabled ? 'bg-white/20 backdrop-blur-sm text-white' : 'bg-white text-black'}`}
