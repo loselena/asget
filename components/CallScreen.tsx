@@ -49,7 +49,9 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                // Handle Answer for outgoing call
                setStatusText('Соединение...');
                const desc = new RTCSessionDescription(signal.payload);
-               if (pc.signalingState !== 'stable') {
+               
+               // Check if connection is not already stable or closed
+               if (pc.signalingState !== 'stable' && pc.signalingState !== 'closed') {
                    await pc.setRemoteDescription(desc);
                    isRemoteDescriptionSet.current = true;
                    
@@ -98,7 +100,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
             // Only request video if it is a video call
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: call.type === 'video'
+                video: call.type === 'video' ? { facingMode: 'user' } : false
             });
             
             if (!isMounted) {
