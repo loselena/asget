@@ -260,19 +260,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
   }
 
   const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
-    // Only trigger for touch events or right-clicks on desktop.
-    if (e.type === 'contextmenu' || ('touches' in e)) {
+    // Handle desktop right-click immediately
+    if (e.type === 'contextmenu') {
         e.preventDefault();
+        setContextMenuShowsHeader(true);
+        setIsContextMenuOpen(true);
+        return;
+    }
+    
+    // Handle touch long press
+    if ('touches' in e) {
         longPressTimerRef.current = setTimeout(() => {
             setContextMenuShowsHeader(true);
             setIsContextMenuOpen(true);
-        }, 300); // 300ms for long press
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 500); // 500ms for standard long press
     }
   };
 
   const handleLongPressEnd = () => {
       if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
       }
   };
   
@@ -473,6 +482,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
                 ref={bubbleRef}
                 className={`flex flex-col ${isSender ? 'items-end' : 'items-start'}`}
                 onTouchStart={handleLongPressStart}
+                onTouchMove={handleLongPressEnd}
+                onTouchCancel={handleLongPressEnd}
                 onTouchEnd={handleLongPressEnd}
                 onMouseUp={handleLongPressEnd}
                 onContextMenu={handleLongPressStart}
