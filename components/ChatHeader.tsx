@@ -1,3 +1,4 @@
+
 import React from 'react';
 // Fix: Corrected import path for types.
 import type { User } from '../types';
@@ -13,7 +14,8 @@ interface ChatHeaderProps {
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({ user, onBack, onStartCall, className }) => {
   return (
-    <div className={`flex items-center justify-between p-3 h-[60px] border-b border-[#2f3b44] bg-[#202c33] relative z-10 ${className}`}>
+    // Added 'flex-shrink-0' (or 'shrink-0') to prevent the header from shrinking when keyboard opens
+    <div className={`flex items-center justify-between p-3 h-[60px] border-b border-[#2f3b44] bg-[#202c33] relative z-10 flex-shrink-0 ${className}`}>
       <div className="flex items-center min-w-0">
         <button onClick={onBack} className="mr-2 md:hidden p-2 rounded-full hover:bg-[#374248]">
           <ArrowLeftIcon className="text-2xl text-[#d1d7db]" />
