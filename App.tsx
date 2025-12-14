@@ -100,7 +100,9 @@ const App: React.FC = () => {
                             // Blob URLs are session-specific. If we reloaded, they are dead.
                             if (msg.content && typeof msg.content === 'string' && msg.content.startsWith('blob:')) {
                                 hasChanges = true;
-                                return { ...msg, type: 'text', content: '[Изображение недоступно: сессия истекла]', caption: undefined };
+                                const isAudio = msg.type === 'audio';
+                                const text = isAudio ? '[Аудио недоступно: сессия истекла]' : '[Медиа недоступно: сессия истекла]';
+                                return { ...msg, type: 'text', content: text, caption: undefined };
                             }
                             return msg;
                         })
@@ -225,6 +227,18 @@ const App: React.FC = () => {
     const handleConfirm = () => { confirmModal.onConfirm(); closeConfirm(); }
 
     const handleLogin = async (name: string): Promise<void> => {
+        // Request Permissions Early (UX improvement)
+        try {
+            console.log("Requesting initial permissions...");
+            // Request both audio and video to prevent prompts later
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            // Stop immediately, we just wanted the permission bit flipped in the browser
+            stream.getTracks().forEach(track => track.stop());
+            console.log("Permissions granted.");
+        } catch (e) {
+            console.warn("Initial permission request failed or denied. User will be prompted again when needed.", e);
+        }
+
         // --- Supabase Mode ---
         if (isSupabaseInitialized) {
             try {
