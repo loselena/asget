@@ -22,7 +22,12 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMicEnabled, setMicEnabled] = useState(true);
   const [isCameraEnabled, setCameraEnabled] = useState(call.type === 'video');
-  const [isSpeakerOn, setSpeakerOn] = useState(call.type === 'video'); // Video defaults to speaker, Audio to earpiece
+  
+  // State for Speakerphone: 
+  // Video calls default to Speaker (true). 
+  // Voice calls default to Earpiece (false).
+  const [isSpeakerOn, setSpeakerOn] = useState(call.type === 'video'); 
+  
   const [statusText, setStatusText] = useState('Инициализация...');
   const [isPcReady, setIsPcReady] = useState(false);
   
@@ -40,18 +45,18 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const processedSignalIds = useRef<Set<number>>(new Set());
 
   // Helper to switch audio output device
-  const setAudioOutput = async (enableSpeaker: boolean) => {
+  // IMPORTANT: We do NOT call getUserMedia here, as it breaks the active call stream.
+  const setAudioOutput = useCallback(async (enableSpeaker: boolean) => {
       const videoElement = remoteVideoRef.current as any;
       
-      // Check for browser support
+      // Check for browser support (Chrome/Edge/Android Webview support setSinkId)
       if (!videoElement || typeof videoElement.setSinkId !== 'function') {
+          console.warn("setSinkId is not supported in this browser.");
           return;
       }
 
       try {
-          // REMOVED: await navigator.mediaDevices.getUserMedia(...) 
-          // We already have permissions from the active call stream. Requesting again breaks the stream.
-          
+          // Since we already have permission from the active call, we can just enumerate.
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
           
@@ -60,27 +65,33 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
           if (enableSpeaker) {
               // Try to find a device explicitly labeled 'speaker'
               const speaker = audioOutputs.find(d => d.label.toLowerCase().includes('speaker'));
-              // Fallback to default, which is usually speaker for media elements
+              // If found, use it. If not, empty string usually defaults to system default (often speaker for media).
               targetDeviceId = speaker ? speaker.deviceId : ""; 
           } else {
-              // Try to find 'earpiece', 'receiver', 'headset'
+              // Try to find 'earpiece', 'receiver', 'handset', 'headset'
               const earpiece = audioOutputs.find(d => 
                   d.label.toLowerCase().includes('receiver') || 
                   d.label.toLowerCase().includes('earpiece') ||
-                  d.label.toLowerCase().includes('headset') ||
-                  d.label.toLowerCase().includes('communications')
+                  d.label.toLowerCase().includes('handset') ||
+                  d.label.toLowerCase().includes('headset')
               );
-              // If specific earpiece found, use it. Otherwise empty string often defaults to system default.
-              // Note: Handling "earpiece" on mobile web is tricky; often requires OS level routing.
-              targetDeviceId = earpiece ? earpiece.deviceId : "default";
+              
+              // If we found a specific earpiece, use it. 
+              if (earpiece) {
+                  targetDeviceId = earpiece.deviceId;
+              } else {
+                  // Fallback strategy: find the "default" device or any device that DOESN'T say speaker
+                  const nonSpeaker = audioOutputs.find(d => d.deviceId === 'default' || !d.label.toLowerCase().includes('speaker'));
+                  targetDeviceId = nonSpeaker ? nonSpeaker.deviceId : "";
+              }
           }
 
           await videoElement.setSinkId(targetDeviceId);
-          console.log(`Audio output set to: ${enableSpeaker ? 'Speaker' : 'Earpiece'} (${targetDeviceId})`);
+          console.log(`Audio output switched to: ${enableSpeaker ? 'Speaker' : 'Earpiece'} (ID: ${targetDeviceId})`);
       } catch (error) {
           console.error("Failed to set audio output:", error);
       }
-  };
+  }, []);
 
   const toggleSpeaker = () => {
       const newState = !isSpeakerOn;
@@ -88,15 +99,13 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
       setAudioOutput(newState);
   };
   
-  // Apply audio output settings whenever remote stream changes or call type initializes
+  // Apply audio output settings whenever remote stream becomes available or call type changes
   useEffect(() => {
-      if (remoteStream) {
-          // Apply initial preference (Voice -> False/Earpiece, Video -> True/Speaker)
-          const initialSpeakerState = call.type === 'video';
-          setSpeakerOn(initialSpeakerState);
-          setAudioOutput(initialSpeakerState);
+      if (remoteStream && remoteVideoRef.current) {
+          // Apply the current state preference
+          setAudioOutput(isSpeakerOn);
       }
-  }, [remoteStream, call.type]);
+  }, [remoteStream, isSpeakerOn, setAudioOutput]);
 
 
   // Consolidated Signal Processing Logic
@@ -219,8 +228,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     setRemoteStream(remote);
                     if (remoteVideoRef.current) {
                         remoteVideoRef.current.srcObject = remote;
-                        // IMPORTANT: Audio output setting moved to useEffect [remoteStream]
-                        // to prevent race conditions in this callback.
+                        // Audio switching is handled in the separate useEffect depending on remoteStream
                     }
                     setStatusText('Соединение установлено');
                 }
