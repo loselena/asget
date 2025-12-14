@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Call, User, SignalPayload } from '../types';
-import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon } from './Icons';
+import { PhoneHangupIcon, MicOnIcon, MicOffIcon, VideoOnIcon, VideoOffIcon, VolumeHighIcon, VolumeLowIcon } from './Icons';
 import { AppService } from '../services/AppService';
 import { isSupabaseInitialized } from '../services/supabase';
 
@@ -22,6 +22,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMicEnabled, setMicEnabled] = useState(true);
   const [isCameraEnabled, setCameraEnabled] = useState(call.type === 'video');
+  const [isSpeakerOn, setSpeakerOn] = useState(call.type === 'video'); // Video defaults to speaker, Audio to earpiece
   const [statusText, setStatusText] = useState('Инициализация...');
   const [isPcReady, setIsPcReady] = useState(false);
   
@@ -37,6 +38,53 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
   const processedCandidates = useRef<Set<string>>(new Set());
   // Track processed signal IDs to prevent duplicates from Polling + Subscription race
   const processedSignalIds = useRef<Set<number>>(new Set());
+
+  // Helper to switch audio output device
+  const setAudioOutput = async (enableSpeaker: boolean) => {
+      const videoElement = remoteVideoRef.current as any;
+      if (!videoElement || typeof videoElement.setSinkId !== 'function') {
+          console.warn("Browser does not support setSinkId");
+          return;
+      }
+
+      try {
+          await navigator.mediaDevices.getUserMedia({ audio: true }); // Request permissions to list labels
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+          
+          let targetDeviceId = "";
+
+          if (enableSpeaker) {
+              // Try to find a device explicitly labeled 'speaker'
+              const speaker = audioOutputs.find(d => d.label.toLowerCase().includes('speaker'));
+              targetDeviceId = speaker ? speaker.deviceId : ""; // fallback to default if not found, usually speaker
+          } else {
+              // Try to find 'earpiece', 'receiver', 'headset' or 'communications'
+              // Note: On many mobile browsers, 'default' is the earpiece during a "call", 
+              // but for WebRTC media, it often defaults to speaker. 
+              const earpiece = audioOutputs.find(d => 
+                  d.label.toLowerCase().includes('receiver') || 
+                  d.label.toLowerCase().includes('earpiece') ||
+                  d.label.toLowerCase().includes('headset') ||
+                  d.label.toLowerCase().includes('communications')
+              );
+              // If we found a specific earpiece/headset, use it. 
+              // Otherwise, we might need to rely on the OS default for "default".
+              targetDeviceId = earpiece ? earpiece.deviceId : "default";
+          }
+
+          await videoElement.setSinkId(targetDeviceId);
+          console.log(`Audio output set to: ${enableSpeaker ? 'Speaker' : 'Earpiece'} (${targetDeviceId})`);
+      } catch (error) {
+          console.error("Failed to set audio output:", error);
+      }
+  };
+
+  const toggleSpeaker = () => {
+      const newState = !isSpeakerOn;
+      setSpeakerOn(newState);
+      setAudioOutput(newState);
+  };
 
   // Consolidated Signal Processing Logic
   const processSignal = useCallback(async (signal: SignalPayload, pc: RTCPeerConnection) => {
@@ -159,6 +207,10 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
                     setRemoteStream(remote);
                     if (remoteVideoRef.current) {
                         remoteVideoRef.current.srcObject = remote;
+                        // Attempt to set initial audio output based on call type
+                        // For voice calls, we try to set it to earpiece (false)
+                        // For video calls, we default to speaker (true)
+                        setAudioOutput(call.type === 'video');
                     }
                     setStatusText('Соединение установлено');
                 }
@@ -350,6 +402,17 @@ export const CallScreen: React.FC<CallScreenProps> = ({ call, currentUser, onEnd
 
         {/* Controls */}
         <div className="absolute bottom-10 left-0 right-0 z-20 flex justify-center items-center gap-6">
+            
+            {/* Speaker Toggle (Only for Voice Calls) */}
+            {call.type === 'voice' && (
+                <button 
+                    onClick={toggleSpeaker} 
+                    className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isSpeakerOn ? 'bg-white text-black' : 'bg-white/20 backdrop-blur-sm text-white'}`}
+                >
+                    {isSpeakerOn ? <VolumeHighIcon className="text-2xl"/> : <VolumeLowIcon className="text-2xl"/>}
+                </button>
+            )}
+
             <button 
                 onClick={toggleMic} 
                 className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${isMicEnabled ? 'bg-white/20 backdrop-blur-sm text-white' : 'bg-white text-black'}`}
