@@ -79,35 +79,62 @@ const AudioPlayer: React.FC<{ src: string }> = ({ src }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
+    const [error, setError] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
 
     useEffect(() => {
         const audio = audioRef.current;
         if (audio) {
-            const setAudioData = () => setDuration(audio.duration);
+            const setAudioData = () => {
+                setDuration(audio.duration);
+                setError(false);
+            };
             const setAudioTime = () => setCurrentTime(audio.currentTime);
+            const handleError = () => {
+                console.warn("Audio resource failed to load:", src);
+                setError(true);
+                setIsPlaying(false);
+            };
 
             audio.addEventListener('loadeddata', setAudioData);
             audio.addEventListener('timeupdate', setAudioTime);
+            audio.addEventListener('error', handleError);
             
             return () => {
                 audio.removeEventListener('loadeddata', setAudioData);
                 audio.removeEventListener('timeupdate', setAudioTime);
+                audio.removeEventListener('error', handleError);
             };
         }
-    }, []);
+    }, [src]);
 
     const togglePlayPause = () => {
         const audio = audioRef.current;
-        if (!audio) return;
+        if (!audio || error) return;
 
         if (isPlaying) {
             audio.pause();
         } else {
-            audio.play().catch(e => console.error("Audio play failed:", e));
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => {
+                    console.error("Audio play failed:", e);
+                    setIsPlaying(false);
+                    setError(true);
+                });
+            }
         }
         setIsPlaying(!isPlaying);
     };
+
+    if (error) {
+         return (
+             <div className="flex items-center gap-2 w-64 text-red-400 p-2">
+                 <XIcon className="text-xl" />
+                 <span className="text-xs">Ошибка воспроизведения</span>
+             </div>
+         );
+    }
 
     return (
         <div className="flex items-center gap-2 w-64 text-white">
