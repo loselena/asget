@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { PaperclipIcon, EmojiIcon, MicIcon, SendIcon, PhotoIcon, DocumentTextIcon, XIcon, PlayIcon } from './Icons';
 import { MediaPicker } from './MediaPicker';
@@ -140,9 +141,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
   const docInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  // Fix: Use ReturnType<typeof setInterval> for browser compatibility instead of NodeJS.Timeout.
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  
+  // Track if the mouse is currently held down to prevent "ghost recording" if permission prompt delays start
+  const isPressingRef = useRef(false);
 
   useClickOutside(mediaPickerRef, () => setShowMediaPicker(false));
   useClickOutside(attachmentMenuRef, () => setShowAttachmentMenu(false));
@@ -304,9 +306,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
   };
 
   const handleStartRecording = async () => {
+    isPressingRef.current = true;
+    
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // CRITICAL CHECK: If the user released the button while the permission prompt was visible,
+            // we must abort the recording to prevent it from getting stuck in "recording" mode.
+            if (!isPressingRef.current) {
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+
             mediaRecorderRef.current = new MediaRecorder(stream);
             const audioChunks: Blob[] = [];
 
@@ -317,7 +329,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
             mediaRecorderRef.current.onstop = () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 const audioUrl = URL.createObjectURL(audioBlob);
-                onSendMessage([{ content: audioUrl, type: 'audio' }]);
+                // Create a File object to ensure consistency with other media types
+                const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
+                
+                onSendMessage([{ 
+                    content: audioUrl, 
+                    type: 'audio', 
+                    file: audioFile // Pass file for upload/Base64 conversion
+                }]);
+                
                 stream.getTracks().forEach(track => track.stop()); // Stop the microphone access
             };
 
@@ -345,6 +365,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
   };
 
   const handleStopRecording = () => {
+    isPressingRef.current = false;
+    
     if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.stop();
         setIsRecording(false);
@@ -379,6 +401,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onTyp
           <button 
             onMouseDown={handleStartRecording} 
             onMouseUp={handleStopRecording} 
+            onMouseLeave={handleStopRecording}
             onTouchStart={handleStartRecording}
             onTouchEnd={handleStopRecording}
             className={`p-2 rounded-full text-[#8696a0] ${isRecording ? 'bg-red-500 text-white' : 'hover:bg-[#374248]'}`}
