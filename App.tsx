@@ -44,7 +44,12 @@ const convertFileToBase64 = (file: File): Promise<string> => {
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [users, setUsers] = useState<User[]>([]);
+    
+    // rawUsers stores the data directly from DB/LocalStorage
+    const [rawUsers, setRawUsers] = useState<User[]>([]);
+    // onlineUserIds stores the Realtime Presence data (only in Supabase mode)
+    const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
+
     const [chats, setChats] = useState<Chat[]>([]);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
     const [currentCall, setCurrentCall] = useState<Call | null>(null);
@@ -53,10 +58,21 @@ const App: React.FC = () => {
     // Incoming call state
     const [incomingCallSignal, setIncomingCallSignal] = useState<{ signal: SignalPayload, caller: User } | null>(null);
     
+    // Derived state: Combines raw DB data with Realtime Presence status
+    const users = useMemo(() => {
+        if (!isSupabaseInitialized) return rawUsers;
+        return rawUsers.map(u => ({
+            ...u,
+            // Override DB status with Realtime Presence status. 
+            // Current user is always online to themselves.
+            isOnline: onlineUserIds.has(u.id) || u.id === currentUser?.id
+        }));
+    }, [rawUsers, onlineUserIds, currentUser]);
+
     // Refs for accessing state inside callbacks without triggering re-renders
     const usersRef = useRef<User[]>([]);
 
-    // Sync usersRef with users state
+    // Sync usersRef with the derived users state
     useEffect(() => {
         usersRef.current = users;
     }, [users]);
@@ -86,7 +102,7 @@ const App: React.FC = () => {
                 setCurrentUser(user);
                 
                 const storedUsers = localStorage.getItem('users');
-                setUsers(storedUsers ? JSON.parse(storedUsers) : []);
+                setRawUsers(storedUsers ? JSON.parse(storedUsers) : []);
                 
                 // Sanitize Chats: Remove expired blob URLs to prevent console errors
                 const storedChatsStr = localStorage.getItem(`chats-${user.id}`);
@@ -132,17 +148,23 @@ const App: React.FC = () => {
             sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
         });
 
-        // 2. Subscribe to All Users (to see contacts status)
+        // 2. Subscribe to All Users (to see names/avatars/new contacts)
         const unsubAllUsers = AppService.subscribeToAllUsers((fetchedUsers) => {
-            setUsers(fetchedUsers);
+            setRawUsers(fetchedUsers);
         });
 
-        // 3. Subscribe to Chats list
+        // 3. Subscribe to Real-time Presence (Online Status)
+        // This ensures "isOnline" is only true if the user is currently connected to Supabase
+        const unsubPresence = AppService.initPresence(currentUser.id, (onlineIds) => {
+            setOnlineUserIds(onlineIds);
+        });
+
+        // 4. Subscribe to Chats list
         const unsubChats = AppService.subscribeToChats(currentUser.id, (fetchedChats) => {
             setChats(fetchedChats);
         });
         
-        // 4. Subscribe to Incoming Call Signals (OFFER only)
+        // 5. Subscribe to Incoming Call Signals (OFFER only)
         const unsubSignals = AppService.subscribeToSignals(currentUser.id, (signal) => {
             console.log("App.tsx received signal:", signal.type);
             
@@ -169,6 +191,7 @@ const App: React.FC = () => {
         return () => {
             unsubUser();
             unsubAllUsers();
+            if (unsubPresence) unsubPresence();
             unsubChats();
             unsubSignals();
         };
@@ -277,7 +300,7 @@ const App: React.FC = () => {
         }
         
         const userChats = isDemo ? mockChats : JSON.parse(localStorage.getItem(`chats-${user.id}`) || '[]');
-        setUsers(initialUsers.map(u => u.id === user!.id ? user! : u));
+        setRawUsers(initialUsers.map(u => u.id === user!.id ? user! : u));
         setChats(userChats);
         setCurrentUser(user);
         localStorage.setItem('users', JSON.stringify(initialUsers));
@@ -423,7 +446,7 @@ const App: React.FC = () => {
 
         // --- Local Storage Fallback ---
         let contactExists = false;
-        const updatedUsers = users.map(u => {
+        const updatedUsers = rawUsers.map(u => {
             if (u.id === currentUser.id) return { ...u, contacts: [...new Set([...u.contacts, payload.id])] };
             if (u.id === payload.id) {
                 contactExists = true;
@@ -434,7 +457,7 @@ const App: React.FC = () => {
         if (!contactExists) {
             updatedUsers.push({ ...payload, contacts: [currentUser.id], id: payload.id, uid: `local-${payload.id}`, isOnline: payload.isOnline ?? false});
         }
-        setUsers(updatedUsers);
+        setRawUsers(updatedUsers);
         localStorage.setItem('users', JSON.stringify(updatedUsers));
         
         const chatExists = chats.some(c => c.userIds.includes(currentUser.id) && c.userIds.includes(payload.id));
@@ -466,8 +489,8 @@ const App: React.FC = () => {
         const updatedUser = { ...currentUser, ...updates };
         setCurrentUser(updatedUser);
         sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
-        const updatedUsers = users.map(u => u.id === currentUser.id ? updatedUser : u);
-        setUsers(updatedUsers);
+        const updatedUsers = rawUsers.map(u => u.id === currentUser.id ? updatedUser : u);
+        setRawUsers(updatedUsers);
         localStorage.setItem('users', JSON.stringify(updatedUsers));
         setSettingsOpen(false);
     };
