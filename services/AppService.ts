@@ -42,7 +42,7 @@ export const AppService = {
     }
 
     if (existingUser) {
-        // Update online status
+        // We still update DB mostly for "Last Seen" purposes, but real-time status is handled by Presence now.
         await supabase.from('users').update({ is_online: true }).eq('uid', dbUid);
     } else {
         const newUser = {
@@ -98,6 +98,46 @@ export const AppService = {
   setOnlineStatus: async (uid: string, isOnline: boolean) => {
       if (!supabase) return;
       await supabase.from('users').update({ is_online: isOnline }).eq('uid', uid);
+  },
+  
+  // --- Presence (Real-time Online Status) ---
+  initPresence: (userId: number, onOnlineUsersChange: (ids: Set<number>) => void) => {
+      if (!supabase) return () => {};
+
+      // Create a channel for tracking presence
+      const channel = supabase.channel('online_users', {
+          config: {
+              presence: {
+                  key: userId.toString(),
+              },
+          },
+      });
+
+      channel
+        .on('presence', { event: 'sync' }, () => {
+            const newState = channel.presenceState();
+            const onlineIds = new Set<number>();
+            
+            // The presence state object keys are the "key" we provided in config (userId)
+            // or generated IDs if we didn't provide a key. 
+            // Since we provided userId as key:
+            for (const key in newState) {
+                const id = parseInt(key);
+                if (!isNaN(id)) {
+                    onlineIds.add(id);
+                }
+            }
+            onOnlineUsersChange(onlineIds);
+        })
+        .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await channel.track({ online_at: new Date().toISOString() });
+            }
+        });
+
+      return () => { 
+          supabase?.removeChannel(channel); 
+      };
   },
 
   // --- Contacts ---
