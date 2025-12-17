@@ -3,7 +3,7 @@
 <html lang="ru" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no" />
     <title>ASGET</title>
     <script type="importmap">
     {
@@ -22,41 +22,53 @@
     <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class', // or 'media'
+      darkMode: 'class',
     }
   </script>
 <style>
+  /* Disable all browser-level scaling and gestures */
+  :root {
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+
+  body {
+    position: fixed;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none; /* Disable pull-to-refresh */
+  }
+
   /* Modern, minimal scrollbar using a custom class */
   .custom-scrollbar {
-    /* For Firefox */
-    scrollbar-width: thin; /* Sets to a thin scrollbar */
-    scrollbar-color: transparent transparent; /* Thumb and track are transparent by default */
-    transition: scrollbar-color 0.3s ease-in-out; /* Smooth transition for Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s ease-in-out;
   }
 
   .custom-scrollbar:hover {
-     /* On hover of the container, make the thumb visible for Firefox */
      scrollbar-color: rgba(174, 186, 193, 0.125) transparent;
   }
 
-  /* For Webkit browsers (Chrome, Safari) */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 1px; /* Target width */
+    width: 1px;
     height: 1px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent; /* Track is always transparent */
+    background: transparent;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: transparent; /* Thumb is transparent by default */
+    background-color: transparent;
     border-radius: 3px;
-    transition: background-color 0.3s ease-in-out; /* Smooth fade in/out */
+    transition: background-color 0.3s ease-in-out;
   }
 
   .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-    /* On hover of the container, make the thumb visible */
     background-color: rgba(174, 186, 193, 0.125);
   }
 
@@ -69,7 +81,6 @@
   
   /* Custom scrollbar for Emoji Picker */
   aside.EmojiPickerReact .epr-body {
-    /* For Firefox */
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
     transition: scrollbar-color 0.3s ease-in-out;
@@ -79,7 +90,6 @@
     scrollbar-color: rgba(174, 186, 193, 0.25) transparent;
   }
 
-  /* For Webkit browsers (Chrome, Safari) */
   aside.EmojiPickerReact .epr-body::-webkit-scrollbar {
     width: 2px;
     height: 2px;
@@ -117,5 +127,28 @@
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Force disable pinch-to-zoom on iOS Safari
+      document.addEventListener('gesturestart', function (e) {
+        e.preventDefault();
+      });
+
+      // Disable double-tap zoom and multi-touch zoom on mobile
+      document.addEventListener('touchstart', function (event) {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+
+      // Secondary check for double tap (some browsers)
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', function (event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+          event.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, false);
+    </script>
   </body>
 </html>
