@@ -35,7 +35,8 @@ const FormattedTextMessage: React.FC<{ content: string }> = ({ content }) => {
     const parts = useMemo(() => content.split(urlRegex), [content]);
 
     return (
-        <p className="whitespace-pre-wrap break-all min-w-0">
+        /* Changed 'break-all' to 'break-words' for natural word wrapping */
+        <p className="whitespace-pre-wrap break-words min-w-0">
             {parts.map((part, index) => {
                 if (part.match(urlRegex)) {
                     // It's a URL
@@ -393,11 +394,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
     })();
     
     return (
-        <div>
+        <div className="min-w-0">
             {forwardedFrom && (
                 <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
-                    <ShareIcon />
-                    <span>Пересланное сообщение от <strong>{forwardedFrom.name}</strong></span>
+                    <ShareIcon className="text-[10px]" />
+                    <span className="truncate">Переслано: <strong>{forwardedFrom.name}</strong></span>
                 </div>
             )}
             {contentBody}
@@ -466,7 +467,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
   } else if (type === 'image' && imgError) {
       bubbleSizeClass = 'w-fit'; // Shrink bubble if image failed
   } else {
-      bubbleSizeClass = `${responsiveMaxWidths} md:max-w-md lg:max-w-xl min-w-24`;
+      bubbleSizeClass = `${responsiveMaxWidths} md:max-w-md lg:max-w-xl min-w-[6rem]`;
   }
 
   const containerClasses = `relative rounded-lg min-w-0 ${bubbleSizeClass} ${isSpecialMedia ? '' : bubbleClasses} ${isSpecialMedia ? '' : 'px-3 py-2'}`;
@@ -480,7 +481,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender,
             {isSender && <MessageActions />}
             <div 
                 ref={bubbleRef}
-                className={`flex flex-col ${isSender ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col ${isSender ? 'items-end' : 'items-start'} min-w-0`}
                 onTouchStart={handleLongPressStart}
                 onTouchMove={handleLongPressEnd}
                 onTouchCancel={handleLongPressEnd}
