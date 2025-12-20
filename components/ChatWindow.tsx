@@ -50,6 +50,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     <div className="flex flex-col h-full bg-[#182229] bg-chat-pattern relative overflow-hidden">
       <ChatHeader user={contactUser} onBack={onBack} onStartCall={onStartCall} />
       <MessageList
+        chatId={chat.id}
         messages={chat.messages}
         currentUserId={currentUser.id}
         users={users}
