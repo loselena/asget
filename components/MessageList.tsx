@@ -1,9 +1,11 @@
+
 // Fix: Implemented the MessageList component to display chat messages.
 import React, { useRef, useLayoutEffect } from 'react';
 import type { Message, User } from '../types';
 import { MessageBubble } from './MessageBubble';
 
 interface MessageListProps {
+  chatId: number;
   messages: Message[];
   currentUserId: number;
   users: User[];
@@ -15,16 +17,30 @@ interface MessageListProps {
   showConfirm: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, currentUserId, users, onViewImage, onViewVideo, onDeleteMessages, onReactToMessage, onForwardMessage, showConfirm }) => {
+export const MessageList: React.FC<MessageListProps> = ({ chatId, messages, currentUserId, users, onViewImage, onViewVideo, onDeleteMessages, onReactToMessage, onForwardMessage, showConfirm }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLength = useRef(messages.length);
+  const prevChatId = useRef<number | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   useLayoutEffect(() => {
-    scrollToBottom();
-  }, [messages.length]);
+    const chatChanged = prevChatId.current !== chatId;
+    const messagesAdded = messages.length > prevMessagesLength.current;
+
+    // Scroll to bottom only if we switched to a different chat 
+    // or if the number of messages increased (new message sent/received).
+    // If messages were deleted (length decreased), we do nothing to prevent jumping.
+    if (chatChanged || messagesAdded) {
+      scrollToBottom();
+    }
+
+    // Update refs for next render
+    prevMessagesLength.current = messages.length;
+    prevChatId.current = chatId;
+  }, [messages.length, chatId]);
 
   const isNewDay = (current: Message, previous?: Message): boolean => {
     if (!previous) return true;
