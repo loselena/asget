@@ -533,13 +533,24 @@ const App: React.FC = () => {
         if(!currentUser) return;
 
         if (isSupabaseInitialized) {
-            const chat = chats.find(c => c.id === activeChatId);
-            if (chat && chat.uid) {
-                const messagesToDelete = activeChatMessages.filter(m => messageIds.includes(m.id));
-                for (const msg of messagesToDelete) {
-                    if ((msg as any)._docId) {
-                        await AppService.deleteMessage(chat.uid, (msg as any)._docId);
+            // Find messages to delete across ALL chats (necessary for FileManager functionality)
+            for (const idToMatch of messageIds) {
+                let targetChatUid: string | undefined;
+                let databaseId: number | undefined;
+
+                // Look through all chats for the message with this client-side ID
+                for (const chat of chats) {
+                    const msgFound = chat.messages.find(m => m.id === idToMatch);
+                    if (msgFound) {
+                        targetChatUid = chat.uid;
+                        databaseId = (msgFound as any)._docId || msgFound.id;
+                        break;
                     }
+                }
+
+                if (databaseId && targetChatUid) {
+                    // Call service to remove from table AND physical storage
+                    await AppService.deleteMessage(targetChatUid, databaseId);
                 }
             }
         } else {
