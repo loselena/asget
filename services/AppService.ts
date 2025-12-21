@@ -220,9 +220,35 @@ export const AppService = {
       await supabase.from('chats').update({ last_message_timestamp: message.timestamp }).eq('uid', chatUid);
   },
   
-  deleteMessage: async(chatUid: string, messageId: number) => {
+  deleteMessage: async (chatUid: string, messageId: number) => {
       if (!supabase) return;
-      await supabase.from('messages').delete().eq('id', messageId);
+
+      try {
+          // 1. Fetch message details to check if it contains a file in Storage
+          const { data: msg } = await supabase.from('messages').select('*').eq('id', messageId).single();
+          
+          if (msg) {
+              // 2. Determine if there's a file URL (for image, video, audio, document)
+              // Note: stickers and gifs are usually external links or from our own static server, 
+              // but we check anyway if they are in our chat-media bucket.
+              const possibleMediaUrl = msg.type === 'document' ? msg.caption : msg.content;
+              
+              if (possibleMediaUrl && possibleMediaUrl.includes('/storage/v1/object/public/chat-media/')) {
+                  // Extract filename from the end of the URL
+                  const fileName = possibleMediaUrl.split('/').pop();
+                  if (fileName) {
+                      const { error: storageError } = await supabase.storage.from('chat-media').remove([fileName]);
+                      if (storageError) console.warn("Storage cleanup warning:", storageError);
+                  }
+              }
+          }
+      } catch (e) {
+          console.error("Error during message pre-deletion check:", e);
+      }
+
+      // 3. Delete the database record (reactions will be deleted automatically if they are in the same row)
+      const { error } = await supabase.from('messages').delete().eq('id', messageId);
+      if (error) console.error("Error deleting message from DB:", error);
   },
 
   addReaction: async (chatUid: string, messageId: number, reaction: { emoji: string, userId: number }) => {
