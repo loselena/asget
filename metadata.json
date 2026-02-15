@@ -1,0 +1,8 @@
+{
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "name": "4 января Copy of удаление файлов из базы. ASGET.",
+  "description": ""
+}
