@@ -8,14 +8,14 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "dependencies": {      // ✅ Зависимости на одном уровне с scripts
+  "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "emoji-picker-react": "^4.13.3",
     "@supabase/supabase-js": "^2.39.3"
   },
-  "devDependencies": {   // ✅ dev-зависимости тоже отдельно
-    "@types/react": "^19.0.0",  // обратите внимание на версию
+  "devDependencies": {
+    "@types/react": "^19.0.0",
     "@types/node": "^22.14.0"
   }
 }
