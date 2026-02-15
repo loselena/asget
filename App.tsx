@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 //import { Auth } from './components/Auth';
-import { Sidebar } from './components/Sidebar';
+//import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AddContactModal } from './components/AddContactModal';
