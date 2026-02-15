@@ -12,5 +12,7 @@ export default defineConfig(() => ({
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      // 👇 ЭТУ СТРОКУ НУЖНО ДОБАВИТЬ
+      base: './',
     }));
