@@ -4,9 +4,7 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "routes": [
-    { "src": "/assets/(.*)", "dest": "/assets/$1" },
-    { "src": "/.*\\.js", "headers": { "Content-Type": "application/javascript" } },
-    { "src": "/.*\\.css", "headers": { "Content-Type": "text/css" } },
-    { "handle": "filesystem" }
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "/index.html" }
   ]
 }
